@@ -1,0 +1,11 @@
+CREATE TABLE categories (id VARCHAR(36) PRIMARY KEY, name_te VARCHAR(100) NOT NULL, name_en VARCHAR(100) NOT NULL, position INT NOT NULL DEFAULT 0) ENGINE=InnoDB;
+CREATE TABLE settings (id VARCHAR(36) PRIMARY KEY, `value` LONGTEXT NOT NULL) ENGINE=InnoDB;
+CREATE TABLE uploads (id VARCHAR(36) PRIMARY KEY, name VARCHAR(150) NOT NULL, mime VARCHAR(100) NOT NULL, size INT NOT NULL, created_at VARCHAR(30) NOT NULL) ENGINE=InnoDB;
+CREATE TABLE works (
+ id VARCHAR(36) PRIMARY KEY, slug VARCHAR(180) NOT NULL UNIQUE, type VARCHAR(10) NOT NULL, title VARCHAR(240) NOT NULL,
+ description TEXT NOT NULL, body LONGTEXT NOT NULL, tags TEXT NOT NULL, category_id VARCHAR(36), status VARCHAR(12) NOT NULL DEFAULT 'draft', featured TINYINT NOT NULL DEFAULT 0,
+ youtube_id VARCHAR(11) CHARACTER SET ascii COLLATE ascii_bin UNIQUE, publication VARCHAR(300) NOT NULL, publication_date VARCHAR(10) NOT NULL, attribution TEXT NOT NULL, external_url VARCHAR(2000) NOT NULL,
+ cover_id VARCHAR(36), attachment_ids TEXT NOT NULL, created_at VARCHAR(30) NOT NULL, updated_at VARCHAR(30) NOT NULL,
+ CONSTRAINT works_category_fk FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL,
+ INDEX works_status_created(status,created_at)
+) ENGINE=InnoDB;

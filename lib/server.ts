@@ -1,4 +1,5 @@
-import { env } from "cloudflare:workers";
+import { env } from "./environment";
+import { database } from "@/db/mysql";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { isAllowedAdmin } from "./validation";
 export class ApiError extends Error {
@@ -10,15 +11,7 @@ export class ApiError extends Error {
     super(message);
   }
 }
-export function bindings() {
-  if (!env.DB)
-    throw new ApiError(
-      503,
-      "DATABASE_UNAVAILABLE",
-      "Database unavailable. Apply migrations and check the DB binding.",
-    );
-  return env.DB;
-}
+export function bindings() { return database; }
 export async function admin() {
   const user = await getChatGPTUser();
   const vars = env as unknown as Record<string, string>;
@@ -56,7 +49,7 @@ export function errorResponse(error: unknown) {
       { error: error.message, code: error.code },
       { status: error.status },
     );
-  if (error instanceof Error && /UNIQUE constraint/.test(error.message))
+  if (error instanceof Error && /UNIQUE constraint|Duplicate entry/.test(error.message))
     return Response.json(
       {
         error: "This slug or YouTube video already exists.",
@@ -100,3 +93,4 @@ export function decodeWork(row: Record<string, unknown>) {
     updatedAt: row.updated_at,
   };
 }
+

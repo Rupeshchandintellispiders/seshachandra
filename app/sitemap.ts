@@ -2,7 +2,7 @@ import { bindings } from "@/lib/server";
 export const dynamic = "force-dynamic";
 export default async function sitemap() {
   const origin =
-    "https://seshachandra-creations.principal-rie-mysuru.chatgpt.site";
+    (process.env.SITE_URL || "http://localhost:4173");
   const rows = await bindings()
     .prepare("SELECT slug,updated_at FROM works WHERE status='published'")
     .all<{ slug: string; updated_at: string }>();
@@ -14,3 +14,4 @@ export default async function sitemap() {
     })),
   ];
 }
+

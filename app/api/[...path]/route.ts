@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/lib/environment";
 import {
   bindings,
   admin,
@@ -92,7 +92,7 @@ async function handle(
         if (u.searchParams.get("featured") === "1") where.push("featured=1");
         if (u.searchParams.get("q")) {
           where.push(
-            "(title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')",
+            "(title LIKE ? ESCAPE '\\\\' OR description LIKE ? ESCAPE '\\\\' OR tags LIKE ? ESCAPE '\\\\')",
           );
           const q =
             "%" +
@@ -113,7 +113,7 @@ async function handle(
           u.searchParams.get("sort") === "oldest"
             ? "created_at ASC"
             : u.searchParams.get("sort") === "title"
-              ? "title COLLATE NOCASE ASC"
+              ? "title ASC"
               : "created_at DESC";
         const [count, rows] = await Promise.all([
           db
@@ -264,7 +264,7 @@ async function handle(
         const key = id || crypto.randomUUID();
         await db
           .prepare(
-            "INSERT INTO categories (id,name_te,name_en,position) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET name_te=excluded.name_te,name_en=excluded.name_en,position=excluded.position",
+            "INSERT INTO categories (id,name_te,name_en,position) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE name_te=VALUES(name_te),name_en=VALUES(name_en),position=VALUES(position)",
           )
           .bind(key, v.nameTe, v.nameEn, v.position)
           .run();
@@ -274,7 +274,7 @@ async function handle(
     if (resource === "settings") {
       if (method === "GET") {
         const row = await db
-          .prepare("SELECT value FROM settings WHERE id='site'")
+          .prepare("SELECT `value` FROM settings WHERE id='site'")
           .first<{ value: string }>();
         return Response.json(row ? JSON.parse(row.value) : defaultSettings);
       }
@@ -288,7 +288,7 @@ async function handle(
           );
         await db
           .prepare(
-            "INSERT INTO settings (id,value) VALUES ('site',?) ON CONFLICT(id) DO UPDATE SET value=excluded.value",
+            "INSERT INTO settings (id,`value`) VALUES ('site',?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)",
           )
           .bind(JSON.stringify(parsed.data))
           .run();
@@ -364,7 +364,7 @@ async function handle(
       if (!file) throw new ApiError(404, "NOT_FOUND", "File not found.");
       const published = await db
         .prepare(
-          "SELECT id FROM works WHERE status='published' AND (cover_id=? OR EXISTS (SELECT 1 FROM json_each(works.attachment_ids) WHERE value=?))",
+          "SELECT id FROM works WHERE status='published' AND (cover_id=? OR JSON_CONTAINS(works.attachment_ids, JSON_QUOTE(?)))",
         )
         .bind(id, id)
         .first();
@@ -446,7 +446,7 @@ async function handle(
         const now = new Date().toISOString();
         const result = await db
           .prepare(
-            "INSERT INTO works (id,slug,type,title,description,youtube_id,status,publication_date,created_at,updated_at) VALUES (?,?,'video',?,?,?,'draft',?,?,?) ON CONFLICT DO NOTHING",
+            "INSERT IGNORE INTO works (id,slug,type,title,description,youtube_id,status,publication_date,created_at,updated_at) VALUES (?,?,'video',?,?,?,'draft',?,?,?)",
           )
           .bind(
             crypto.randomUUID(),
@@ -482,3 +482,4 @@ async function handle(
   }
 }
 export { handle as GET, handle as POST, handle as PUT, handle as DELETE };
+

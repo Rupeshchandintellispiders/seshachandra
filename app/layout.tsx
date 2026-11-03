@@ -4,7 +4,7 @@ import { Shell } from "@/components/shell";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
-    "https://seshachandra-creations.principal-rie-mysuru.chatgpt.site",
+    (process.env.SITE_URL || "http://localhost:4173"),
   ),
   title: {
     default: "Seshachandra Creations | శేషచంద్ర క్రియేషన్స్",
@@ -31,3 +31,4 @@ export default function RootLayout({
     </html>
   );
 }
+

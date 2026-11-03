@@ -6,6 +6,7 @@ export default function robots() {
       disallow: ["/admin", "/api/", "/*?preview="],
     },
     sitemap:
-      "https://seshachandra-creations.principal-rie-mysuru.chatgpt.site/sitemap.xml",
+      (process.env.SITE_URL || "http://localhost:4173") + "/sitemap.xml",
   };
 }
+
