@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useLanguage, Empty } from "./shell";
 import {
   type Work,
@@ -353,6 +353,30 @@ export function Library({
     </div>
   );
 }
+/**
+ * Reader text size, remembered in this browser. The server always renders the
+ * default; the saved size applies once the page is running.
+ */
+const defaultFontSize = 22;
+const fontListeners = new Set<() => void>();
+function readFontSize() {
+  try {
+    const n = Number(localStorage.getItem("sc-font"));
+    return n >= 18 && n <= 36 ? n : defaultFontSize;
+  } catch {
+    return defaultFontSize;
+  }
+}
+function saveFontSize(n: number) {
+  try {
+    localStorage.setItem("sc-font", String(n));
+  } catch {}
+  fontListeners.forEach((notify) => notify());
+}
+function subscribeFontSize(notify: () => void) {
+  fontListeners.add(notify);
+  return () => fontListeners.delete(notify);
+}
 export function Reader({
   initial,
   preview = false,
@@ -361,21 +385,14 @@ export function Reader({
   preview?: boolean;
 }) {
   const { t } = useLanguage();
-  const [size, setSize] = useState(22),
-    [copied, setCopied] = useState(false),
+  const size = useSyncExternalStore(
+    subscribeFontSize,
+    readFontSize,
+    () => defaultFontSize,
+  );
+  const [copied, setCopied] = useState(false),
     [shareError, setShareError] = useState(false);
-  useEffect(() => {
-    try {
-      const n = Number(localStorage.getItem("sc-font"));
-      if (n >= 18 && n <= 36) setSize(n);
-    } catch {}
-  }, []);
-  function change(n: number) {
-    setSize(n);
-    try {
-      localStorage.setItem("sc-font", String(n));
-    } catch {}
-  }
+  const change = saveFontSize;
   const w = initial;
   return (
     <article className="reader">

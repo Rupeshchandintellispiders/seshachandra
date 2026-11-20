@@ -1,6 +1,8 @@
 import mysql from "mysql2/promise";
 import { mysqlOptions } from "@/lib/mysql-options.mjs";
 let pool: mysql.Pool | undefined;
+/** Placeholder values accepted by mysql2's execute(). */
+type SqlValues = Parameters<mysql.Pool["execute"]>[1];
 export function getPool() {
   return (pool ??= mysql.createPool({
     ...mysqlOptions(),
@@ -23,11 +25,11 @@ class Statement {
     return (await this.all<T>()).results[0] ?? null;
   }
   async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
-    const [rows] = await getPool().execute(this.sql, this.values as any[]);
+    const [rows] = await getPool().execute(this.sql, this.values as SqlValues);
     return { results: rows as T[] };
   }
   async run() {
-    const [r] = await getPool().execute(this.sql, this.values as any[]);
+    const [r] = await getPool().execute(this.sql, this.values as SqlValues);
     return { meta: { changes: (r as mysql.ResultSetHeader).affectedRows } };
   }
 }
@@ -39,7 +41,7 @@ export const database = {
       await connection.beginTransaction();
       const results = [];
       for (const s of statements) {
-        const [r] = await connection.execute(s.sql, s.values as any[]);
+        const [r] = await connection.execute(s.sql, s.values as SqlValues);
         results.push(r);
       }
       await connection.commit();

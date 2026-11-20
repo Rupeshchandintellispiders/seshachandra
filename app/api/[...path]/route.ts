@@ -18,6 +18,18 @@ import {
   bulkSchema,
 } from "@/lib/validation";
 export const dynamic = "force-dynamic";
+/** The parts of YouTube Data API list responses this importer reads. */
+type YouTubeList = {
+  items?: {
+    contentDetails?: {
+      videoId?: string;
+      videoPublishedAt?: string;
+      relatedPlaylists?: { uploads?: string };
+    };
+    snippet?: { title?: string; description?: string; publishedAt?: string };
+  }[];
+  nextPageToken?: string;
+};
 export const runtime = "nodejs";
 const columns = [
   "type",
@@ -255,14 +267,28 @@ async function handle(
             "Both category names and a valid order are required.",
           );
         const v = parsed.data;
-        const key = id || crypto.randomUUID();
+        if (method === "PUT") {
+          // Editing must not silently create a category under an unknown id.
+          if (
+            !(await db.prepare("SELECT id FROM categories WHERE id=?").bind(id).first())
+          )
+            throw new ApiError(404, "NOT_FOUND", "Category no longer exists.");
+          await db
+            .prepare(
+              "UPDATE categories SET name_te=?,name_en=?,position=? WHERE id=?",
+            )
+            .bind(v.nameTe, v.nameEn, v.position, id)
+            .run();
+          return Response.json({ id });
+        }
+        const key = crypto.randomUUID();
         await db
           .prepare(
-            "INSERT INTO categories (id,name_te,name_en,position) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE name_te=VALUES(name_te),name_en=VALUES(name_en),position=VALUES(position)",
+            "INSERT INTO categories (id,name_te,name_en,position) VALUES (?,?,?,?)",
           )
           .bind(key, v.nameTe, v.nameEn, v.position)
           .run();
-        return Response.json({ id: key });
+        return Response.json({ id: key }, { status: 201 });
       }
     }
     if (resource === "settings") {
@@ -399,7 +425,7 @@ async function handle(
             "YOUTUBE_ERROR",
             "YouTube rejected the request. Check API access, key restrictions and quota.",
           );
-        return (await response.json()) as any;
+        return (await response.json()) as YouTubeList;
       };
       const channel = await fetchYouTube("channels", {
         part: "contentDetails",
@@ -447,7 +473,7 @@ async function handle(
             s.title,
             s.description || "",
             vid,
-            (item.contentDetails.videoPublishedAt || s.publishedAt || "").slice(
+            (item.contentDetails?.videoPublishedAt || s.publishedAt || "").slice(
               0,
               10,
             ),

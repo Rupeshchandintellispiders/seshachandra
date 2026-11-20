@@ -115,6 +115,8 @@ export function Account({
                     method: "POST",
                     body: JSON.stringify({ everywhere: true }),
                   });
+                  // A full page load drops any admin data held by the client router.
+                  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
                   location.assign("/admin/login");
                 });
             }}

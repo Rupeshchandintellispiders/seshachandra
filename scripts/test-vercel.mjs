@@ -217,6 +217,44 @@ try {
     "/admin/account",
   ])
     await check(p, {}, 200);
+  // Categories: create, edit, refuse edits to unknown ids, delete.
+  const category = await (
+    await check(
+      "/api/categories",
+      { method: "POST", body: { nameTe: "పరీక్ష", nameEn: "QA test", position: 9999 } },
+      201,
+    )
+  ).json();
+  await check(
+    "/api/categories/" + category.id,
+    { method: "PUT", body: { nameTe: "పరీక్ష 2", nameEn: "QA test 2", position: 9999 } },
+    200,
+  );
+  const unknownCategory = crypto.randomUUID();
+  await check(
+    "/api/categories/" + unknownCategory,
+    { method: "PUT", body: { nameTe: "x", nameEn: "x", position: 1 } },
+    404,
+  );
+  const [ghost] = await c.execute("SELECT id FROM categories WHERE id=?", [unknownCategory]);
+  assert.equal(ghost.length, 0);
+  passed++;
+  await check("/api/categories/" + category.id, { method: "DELETE" }, 200);
+  // Security headers: every page gets a per-request script policy.
+  const homeHeaders = await check("/", { auth: false }, 200);
+  const policyA = homeHeaders.headers.get("content-security-policy");
+  const policyB = (await check("/library", { auth: false }, 200)).headers.get(
+    "content-security-policy",
+  );
+  assert.match(policyA, /script-src 'self' 'nonce-[^']+' 'strict-dynamic'/);
+  assert.match(policyA, /frame-ancestors 'none'/);
+  assert.match(policyA, /object-src 'none'/);
+  assert.notEqual(policyA.match(/nonce-[^']+/)[0], policyB.match(/nonce-[^']+/)[0]);
+  assert.match(await homeHeaders.text(), /<script[^>]+nonce="/);
+  assert.equal(homeHeaders.headers.get("x-frame-options"), "DENY");
+  assert.equal(homeHeaders.headers.get("x-content-type-options"), "nosniff");
+  assert.match(homeHeaders.headers.get("permissions-policy"), /camera=\(\)/);
+  passed += 8;
   // After sign-in, only same-site admin paths are honoured as the destination.
   for (const [next, expected] of [
     ["/admin/works", "/admin/works"],

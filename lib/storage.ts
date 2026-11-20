@@ -1,4 +1,5 @@
 import "./load-env";
+import { ApiError } from "./api-error";
 import {
   S3Client,
   PutObjectCommand,
@@ -19,8 +20,17 @@ export const allowedMimes = [
 export function cloudStorage() {
   const enabled = !!process.env.S3_BUCKET;
   if (!enabled && (process.env.VERCEL || process.env.NODE_ENV === "production"))
-    throw Error("Configure private S3 storage before uploading on production.");
+    throw unavailable("S3_BUCKET is not set; production needs private S3 storage.");
   return enabled;
+}
+/** Logs the configuration problem for the owner; visitors see a generic notice. */
+function unavailable(detail: string) {
+  console.error("File storage misconfigured:", detail);
+  return new ApiError(
+    503,
+    "STORAGE_UNAVAILABLE",
+    "File storage is not configured. The site owner needs to check the S3 settings.",
+  );
 }
 let client: S3Client | undefined;
 function s3() {
@@ -29,10 +39,10 @@ function s3() {
     !process.env.S3_ACCESS_KEY_ID ||
     !process.env.S3_SECRET_ACCESS_KEY
   )
-    throw Error("S3 storage credentials are incomplete.");
+    throw unavailable("S3 storage credentials are incomplete.");
   const endpoint = new URL(process.env.S3_ENDPOINT);
   if (process.env.NODE_ENV === "production" && endpoint.protocol !== "https:")
-    throw Error("Production storage requires HTTPS.");
+    throw unavailable("Production storage requires an HTTPS S3_ENDPOINT.");
   return (client ??= new S3Client({
     endpoint: endpoint.href,
     region: process.env.S3_REGION || "auto",

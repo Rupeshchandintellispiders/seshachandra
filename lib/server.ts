@@ -1,16 +1,9 @@
-import { env } from "./environment";
+import "./load-env";
 import { database } from "@/db/mysql";
 import { currentAdmin } from "./auth";
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+import { ApiError } from "./api-error";
+export { ApiError };
 export function bindings() {
   return database;
 }

@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import {
   createContext,
   useContext,
@@ -7,10 +8,15 @@ import {
   type ReactNode,
 } from "react";
 import { errorInTelugu } from "@/lib/errors";
-const Language = createContext({
+type LanguageState = {
+  lang: string;
+  t: (te: string, en: string) => string;
+  setLang: (lang: string) => void;
+};
+const Language = createContext<LanguageState>({
   lang: "te",
-  t: (te: string, en: string) => te,
-  setLang: (_v: string) => {},
+  t: (te) => te,
+  setLang: () => {},
 });
 export const useLanguage = () => useContext(Language);
 function rememberLanguage(v: string) {
@@ -27,13 +33,12 @@ export function LanguageProvider({
 }) {
   const [lang, setLang] = useState<string>(initialLang);
   useEffect(() => {
-    // One-time move of the older localStorage preference into the cookie.
+    // One-time move of the older localStorage preference into the cookie;
+    // it takes effect from the next page the visitor opens.
     try {
       const saved = localStorage.getItem("sc-language");
-      if (saved && !document.cookie.includes("sc-language=")) {
+      if (saved && !document.cookie.includes("sc-language="))
         rememberLanguage(saved === "en" ? "en" : "te");
-        setLang(saved === "en" ? "en" : "te");
-      }
       localStorage.removeItem("sc-language");
     } catch {}
   }, []);
@@ -68,7 +73,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <span>EST. WITH LOVE · తెలుగు</span>
       </div>
       <header>
-        <a className="identity" href="/" aria-label="Seshachandra Creations">
+        <Link className="identity" href="/" aria-label="Seshachandra Creations">
           <span className="monogram">
             శే<span>✦</span>
           </span>
@@ -80,7 +85,7 @@ export function Shell({ children }: { children: ReactNode }) {
               {t("SESHACHANDRA CREATIONS", "తెలుగు సాహిత్యం · కథలు · వీడియోలు")}
             </small>
           </span>
-        </a>
+        </Link>
         <button
           className="menu-toggle secondary"
           aria-expanded={menu}
@@ -94,7 +99,7 @@ export function Shell({ children }: { children: ReactNode }) {
           className={menu ? "open" : ""}
           aria-label={t("ప్రధాన మెనూ", "Main navigation")}
         >
-          <a href="/">{t("ముఖపుట", "Home")}</a>
+          <Link href="/">{t("ముఖపుట", "Home")}</Link>
           <a href="/library">{t("రచనల సంపుటి", "Library")}</a>
           <a href="/library?type=video">{t("వీడియోలు", "Videos")}</a>
           <a href="/about">{t("పరిచయం", "About")}</a>
@@ -113,9 +118,9 @@ export function Shell({ children }: { children: ReactNode }) {
       <main id="main">{children}</main>
       <footer>
         <div>
-          <a className="footer-brand" href="/">
+          <Link className="footer-brand" href="/">
             Seshachandra Creations<span>శేషచంద్ర క్రియేషన్స్</span>
-          </a>
+          </Link>
           <p>
             {t(
               "తెలుగు కథలు, సాహిత్యం, వీడియోలు — ఒకే చోట.",

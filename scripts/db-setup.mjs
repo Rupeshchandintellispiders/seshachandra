@@ -8,6 +8,7 @@ try {
 import mysql from "mysql2/promise";
 import { mysqlOptions } from "../lib/mysql-options.mjs";
 import { readFile, readdir } from "node:fs/promises";
+import { splitSql } from "./sql-split.mjs";
 const name = process.env.MYSQL_DATABASE || "seshachandra_creations";
 if (!/^[a-zA-Z0-9_]+$/.test(name))
   throw Error("MYSQL_DATABASE must contain letters, numbers or underscores.");
@@ -38,10 +39,9 @@ try {
     await c.execute("INSERT IGNORE INTO sc_migrations(name) VALUES (?)", [
       file,
     ]);
-    const statements = (await readFile("migrations/mysql/" + file, "utf8"))
-      .split(";")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const statements = splitSql(
+      await readFile("migrations/mysql/" + file, "utf8"),
+    );
     for (let i = rows[0]?.statement_count || 0; i < statements.length; i++) {
       await c.query(statements[i]);
       await c.execute(

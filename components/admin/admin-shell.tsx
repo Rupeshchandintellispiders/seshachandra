@@ -44,6 +44,8 @@ export function AdminShell({
     try {
       await api("auth/logout", { method: "POST", body: "{}" });
     } finally {
+      // A full page load drops any admin data held by the client router.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       location.assign("/admin/login");
     }
   }

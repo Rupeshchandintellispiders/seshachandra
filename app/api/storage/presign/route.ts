@@ -33,6 +33,12 @@ export async function POST(request: Request) {
     const name =
       v.name.replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 150) || "attachment";
     const url = await presignUpload(id, v.mime);
+    // Abandoned uploads leave intents behind; clear any that have expired.
+    // Their staged objects are removed by the bucket's staging/ lifecycle rule.
+    await bindings()
+      .prepare("DELETE FROM upload_intents WHERE expires_at<?")
+      .bind(Date.now())
+      .run();
     await bindings()
       .prepare(
         "INSERT INTO upload_intents(id,admin_id,name,mime,size,expires_at) VALUES(?,?,?,?,?,?)",
