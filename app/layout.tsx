@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./admin.css";
 import { LanguageProvider } from "@/components/shell";
 import { currentLanguage } from "@/lib/content";
 

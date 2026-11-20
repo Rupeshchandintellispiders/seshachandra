@@ -15,6 +15,7 @@ import {
   settingsSchema,
   youtubeId,
   validFile,
+  bulkSchema,
 } from "@/lib/validation";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -86,6 +87,7 @@ async function handle(
             admin: isAdmin,
             type: u.searchParams.get("type"),
             category: u.searchParams.get("category"),
+            status: u.searchParams.get("status"),
             featured: u.searchParams.get("featured") === "1",
             q: u.searchParams.get("q"),
             page: u.searchParams.get("page"),
@@ -93,6 +95,46 @@ async function handle(
           }),
           { headers: { "Cache-Control": "no-store" } },
         );
+      }
+      if (method === "POST" && id === "bulk") {
+        const parsed = bulkSchema.safeParse(await request.json());
+        if (!parsed.success)
+          throw new ApiError(400, "VALIDATION", "Choose works and an action.");
+        const { ids, action, categoryId } = parsed.data;
+        if (
+          action === "category" &&
+          categoryId &&
+          !(await db
+            .prepare("SELECT id FROM categories WHERE id=?")
+            .bind(categoryId)
+            .first())
+        )
+          throw new ApiError(400, "VALIDATION", "Category no longer exists.");
+        const list = ids.map(() => "?").join(",");
+        const now = new Date().toISOString();
+        const sql = {
+          // Stories need text or an attachment before they can be published.
+          publish: `UPDATE works SET status='published',updated_at=? WHERE id IN (${list}) AND NOT (type='story' AND TRIM(body)='' AND attachment_ids='[]')`,
+          unpublish: `UPDATE works SET status='draft',updated_at=? WHERE id IN (${list})`,
+          feature: `UPDATE works SET featured=1,updated_at=? WHERE id IN (${list})`,
+          unfeature: `UPDATE works SET featured=0,updated_at=? WHERE id IN (${list})`,
+          category: `UPDATE works SET category_id=?,updated_at=? WHERE id IN (${list})`,
+          delete: `DELETE FROM works WHERE id IN (${list})`,
+        }[action];
+        const args =
+          action === "delete"
+            ? ids
+            : action === "category"
+              ? [categoryId ?? null, now, ...ids]
+              : [now, ...ids];
+        const result = await db
+          .prepare(sql)
+          .bind(...args)
+          .run();
+        return Response.json({
+          changed: result.meta.changes,
+          skipped: ids.length - result.meta.changes,
+        });
       }
       if (method === "DELETE" && id) {
         await db.prepare("DELETE FROM works WHERE id=?").bind(id).run();

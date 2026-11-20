@@ -9,6 +9,7 @@ import {
 } from "./validation";
 
 export const pageSize = 12;
+export const adminPageSize = 25;
 export type WorkResults = {
   items: Work[];
   total: number;
@@ -19,6 +20,8 @@ export type WorkQuery = {
   admin?: boolean;
   type?: string | null;
   category?: string | null;
+  /** Admin only: "draft" or "published". */
+  status?: string | null;
   featured?: boolean;
   q?: string | null;
   page?: number | string | null;
@@ -36,6 +39,10 @@ export async function listWorks(query: WorkQuery = {}): Promise<WorkResults> {
     where.push("category_id=?");
     args.push(query.category);
   }
+  if (query.admin && (query.status === "draft" || query.status === "published")) {
+    where.push("status=?");
+    args.push(query.status);
+  }
   if (query.featured) where.push("featured=1");
   if (query.q) {
     where.push(
@@ -46,12 +53,15 @@ export async function listWorks(query: WorkQuery = {}): Promise<WorkResults> {
   }
   const clause = where.length ? "WHERE " + where.join(" AND ") : "";
   const page = Math.max(1, Math.min(100000, Number(query.page) || 1));
+  const size = query.admin ? adminPageSize : pageSize;
   const sort =
     query.sort === "oldest"
       ? "created_at ASC"
       : query.sort === "title"
         ? "title ASC"
-        : "created_at DESC";
+        : query.sort === "updated"
+          ? "updated_at DESC"
+          : "created_at DESC";
   const db = bindings();
   const [count, rows] = await Promise.all([
     db
@@ -62,7 +72,7 @@ export async function listWorks(query: WorkQuery = {}): Promise<WorkResults> {
       .prepare(
         `SELECT * FROM works ${clause} ORDER BY ${sort}, id LIMIT ? OFFSET ?`,
       )
-      .bind(...args, pageSize, (page - 1) * pageSize)
+      .bind(...args, size, (page - 1) * size)
       .all<Record<string, unknown>>(),
   ]);
   const total = Number(count?.total || 0);
@@ -70,8 +80,27 @@ export async function listWorks(query: WorkQuery = {}): Promise<WorkResults> {
     items: rows.results.map((row) => decodeWork(row) as Work),
     total,
     page,
-    pages: Math.ceil(total / pageSize),
+    pages: Math.ceil(total / size),
   };
+}
+
+/** Any work by id, drafts included. Callers must have checked admin access. */
+export async function getWorkForAdmin(id: string): Promise<Work | null> {
+  const row = await bindings()
+    .prepare("SELECT * FROM works WHERE id=?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  return row ? (decodeWork(row) as Work) : null;
+}
+
+export type WorkCounts = { type: string; status: string; count: number }[];
+export async function workCounts(): Promise<WorkCounts> {
+  const rows = await bindings()
+    .prepare(
+      "SELECT type,status,count(*) AS count FROM works GROUP BY type,status",
+    )
+    .all<{ type: string; status: string; count: number }>();
+  return rows.results.map((r) => ({ ...r, count: Number(r.count) }));
 }
 
 export async function listCategories(): Promise<Category[]> {

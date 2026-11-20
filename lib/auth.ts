@@ -59,4 +59,13 @@ export function loginLimits(email: string, ip: string) {
     { key: hash("email:" + email), max: 50 },
   ];
 }
+export async function activeSessionCount(adminId: string) {
+  const row = await database
+    .prepare(
+      "SELECT count(*) AS n FROM admin_sessions WHERE admin_id=? AND expires_at>?",
+    )
+    .bind(adminId, Date.now())
+    .first<{ n: number }>();
+  return Number(row?.n || 0);
+}
 export const passwordRules = { min: 12, max: 128 };

@@ -21,6 +21,9 @@ export function errorInTelugu(code: string): string {
     YOUTUBE_ERROR:
       "YouTube అభ్యర్థనను అంగీకరించలేదు. API కీ, అనుమతులు, కోటాను తనిఖీ చేయండి.",
     CHANNEL_NOT_FOUND: "YouTube ఛానల్ కనుగొనబడలేదు.",
+    WRONG_PASSWORD: "ప్రస్తుత పాస్‌వర్డ్ సరైనది కాదు.",
+    WEAK_PASSWORD:
+      "కొత్త పాస్‌వర్డ్ 12 నుండి 128 అక్షరాలు ఉండాలి, ప్రస్తుత పాస్‌వర్డ్‌కు భిన్నంగా ఉండాలి.",
   };
   return (
     messages[code] ||

@@ -8,7 +8,8 @@ import { hashPassword } from "../lib/password.mjs";
 const base = "http://127.0.0.1:4175";
 const c = await mysql.createConnection(mysqlOptions());
 const email = "qa-vercel-" + Date.now() + "@example.test";
-const password = crypto.randomUUID() + "A!";
+let password = crypto.randomUUID() + "A!";
+const startedAt = Date.now();
 const adminId = crypto.randomUUID();
 const objects = new Map();
 let child;
@@ -146,6 +147,23 @@ try {
   assert.ok(ready, "Server did not start");
   console.log("Server ready; testing real credentials and storage flow.");
   await check("/admin", {}, 307);
+  // Every admin URL redirects to sign-in and remembers where you were going.
+  const guarded = await check("/admin/works?status=draft", { auth: false }, 307);
+  assert.equal(
+    new URL(guarded.headers.get("location"), base).pathname +
+      new URL(guarded.headers.get("location"), base).search,
+    "/admin/login?next=%2Fadmin%2Fworks%3Fstatus%3Ddraft",
+  );
+  const loginPage = await check("/admin/login", { auth: false }, 200);
+  assert.equal(loginPage.headers.get("x-frame-options"), "DENY");
+  assert.match(loginPage.headers.get("x-robots-tag"), /noindex/);
+  passed += 3;
+  // A well-formed but unknown session token is still refused by the server.
+  await check(
+    "/admin/works",
+    { auth: false, headers: { cookie: "sc_admin_session=" + "a".repeat(64) } },
+    307,
+  );
   for (const p of [
     "/api/works",
     "/api/categories",
@@ -189,6 +207,31 @@ try {
   );
   await login();
   await check("/admin", {}, 200);
+  for (const p of [
+    "/admin/works",
+    "/admin/works?status=draft&type=video",
+    "/admin/works/new",
+    "/admin/categories",
+    "/admin/settings",
+    "/admin/import",
+    "/admin/account",
+  ])
+    await check(p, {}, 200);
+  // After sign-in, only same-site admin paths are honoured as the destination.
+  for (const [next, expected] of [
+    ["/admin/works", "/admin/works"],
+    ["https://evil.test/admin", "/admin"],
+    ["//evil.test", "/admin"],
+    ["/admin/login", "/admin"],
+  ]) {
+    const r = await check(
+      "/api/auth/login",
+      { method: "POST", body: { email, password, next }, auth: false },
+      200,
+    );
+    assert.equal((await r.json()).next, expected);
+    passed++;
+  }
   assert.equal(
     (await (await check("/api/session", {}, 200)).json()).admin,
     true,
@@ -285,6 +328,61 @@ try {
     )
   ).json();
   works.push(row.id);
+  await check("/admin/works/" + row.id, {}, 200);
+  // Bulk actions: an empty story is skipped when publishing.
+  const emptyStory = await (
+    await check(
+      "/api/works",
+      {
+        method: "POST",
+        body: { type: "story", title: "QA empty", slug: slug + "-empty" },
+      },
+      201,
+    )
+  ).json();
+  works.push(emptyStory.id);
+  const both = [row.id, emptyStory.id];
+  await check(
+    "/api/works/bulk",
+    { method: "POST", body: { ids: both, action: "publish" }, auth: false },
+    401,
+  );
+  await check(
+    "/api/works/bulk",
+    {
+      method: "POST",
+      body: { ids: both, action: "publish" },
+      origin: "https://evil.test",
+    },
+    403,
+  );
+  await check(
+    "/api/works/bulk",
+    { method: "POST", body: { ids: ["not-a-uuid"], action: "publish" } },
+    400,
+  );
+  const published2 = await (
+    await check("/api/works/bulk", { method: "POST", body: { ids: both, action: "publish" } }, 200)
+  ).json();
+  assert.deepEqual(published2, { changed: 1, skipped: 1 });
+  passed++;
+  await check("/api/works/bulk", { method: "POST", body: { ids: both, action: "feature" } }, 200);
+  assert.equal(
+    (await (await check("/api/works/" + row.id + "?admin=1", {}, 200)).json()).featured,
+    true,
+  );
+  passed++;
+  await check(
+    "/api/works/bulk",
+    { method: "POST", body: { ids: [row.id], action: "unpublish" } },
+    200,
+  );
+  await check(
+    "/api/works/bulk",
+    { method: "POST", body: { ids: [emptyStory.id], action: "delete" } },
+    200,
+  );
+  await check("/api/works/" + emptyStory.id + "?admin=1", {}, 404);
   const work = await (
     await check("/api/works/" + row.id + "?admin=1", {}, 200)
   ).json();
@@ -367,9 +465,66 @@ try {
     },
     429,
   );
-  await c.execute("DELETE FROM login_limits WHERE identifier=SHA2(?,256)", [
-    rateEmail,
-  ]);
+  // The strict limit is per email and address, so the owner can still sign
+  // in from elsewhere while a stranger is blocked.
+  await check(
+    "/api/auth/login",
+    {
+      method: "POST",
+      body: { email: rateEmail, password: "wrong" },
+      auth: false,
+      headers: { "x-real-ip": "203.0.113.9" },
+    },
+    401,
+  );
+  await login();
+  // Password change: needs the current password, signs out other devices.
+  const firstCookie = cookie;
+  await login();
+  const secondCookie = cookie;
+  await check(
+    "/api/auth/password",
+    { method: "POST", body: { current: "wrong", next: "another-long-password" } },
+    400,
+  );
+  await check(
+    "/api/auth/password",
+    { method: "POST", body: { current: password, next: "short" } },
+    400,
+  );
+  await check(
+    "/api/auth/password",
+    {
+      method: "POST",
+      body: { current: password, next: "another-long-password" },
+      origin: "https://evil.test",
+    },
+    403,
+  );
+  const oldPassword = password;
+  password = crypto.randomUUID() + "B!";
+  await check(
+    "/api/auth/password",
+    { method: "POST", body: { current: oldPassword, next: password } },
+    200,
+  );
+  await check(
+    "/api/auth/login",
+    { method: "POST", body: { email, password: oldPassword }, auth: false },
+    401,
+  );
+  await check("/api/works?admin=1", { headers: { cookie: firstCookie } }, 401);
+  await check("/api/works?admin=1", { headers: { cookie: secondCookie } }, 200);
+  // Sign out everywhere ends every session.
+  await login();
+  const thirdCookie = cookie;
+  await check(
+    "/api/auth/logout",
+    { method: "POST", body: { everywhere: true } },
+    200,
+  );
+  await check("/api/works?admin=1", { headers: { cookie: thirdCookie } }, 401);
+  await check("/api/works?admin=1", { headers: { cookie: secondCookie } }, 401);
   await login();
   await c.execute("UPDATE admin_sessions SET expires_at=0 WHERE admin_id=?", [
     adminId,
@@ -396,9 +551,8 @@ try {
     await c.execute("DELETE FROM uploads WHERE id=?", [id]);
   await c.execute("DELETE FROM upload_intents WHERE admin_id=?", [adminId]);
   await c.execute("DELETE FROM admins WHERE id=?", [adminId]);
-  await c.execute("DELETE FROM login_limits WHERE identifier=SHA2(?,256)", [
-    email,
-  ]);
+  // Attempt counters are keyed by hashes; remove the ones this run created.
+  await c.execute("DELETE FROM login_limits WHERE window_start>=?", [startedAt]);
   await c.end();
   if (child) {
     child.kill();
