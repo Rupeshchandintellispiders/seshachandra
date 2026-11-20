@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api, useLanguage, Notice } from "./shell";
+import { LogoutButton } from "./login";
 import {
   defaultSettings,
   type Settings,
@@ -109,40 +110,9 @@ export function Admin() {
   if (!session.admin)
     return (
       <div className="login-panel">
-        <div className="eyebrow">SESHACHANDRA CREATIONS</div>
-        <h1>{t("నిర్వాహక ప్రవేశం", "Admin sign-in")}</h1>
-        <p>
-          {t(
-            "అనుమతి ఉన్న నిర్వాహకులు మాత్రమే రచనలను నిర్వహించగలరు.",
-            "Only authorized administrators can manage content.",
-          )}
-        </p>
-        {session.signedIn ? (
-          <>
-            <div className="notice">
-              {t(
-                "ఈ ఖాతాకు నిర్వాహక అనుమతి లేదు. మీ వినియోగదారు IDని హోస్టింగ్ నిర్వాహకునికి అందించండి.",
-                "This account is not on the admin allowlist. Give your user ID to the hosting administrator.",
-              )}
-              <code>{session.userId}</code>
-            </div>
-            <a
-              className="button secondary"
-              href="/signout-with-chatgpt?return_to=/admin"
-              target="_top"
-            >
-              {t("నిష్క్రమించండి", "Sign out")}
-            </a>
-          </>
-        ) : (
-          <a
-            className="button"
-            href="/signin-with-chatgpt?return_to=/admin"
-            target="_top"
-          >
-            {t("ChatGPT తో ప్రవేశించండి", "Sign in with ChatGPT")} →
-          </a>
-        )}
+        <a className="button" href="/admin/login">
+          {t("ప్రవేశించండి", "Sign in")}
+        </a>
       </div>
     );
   const total = (type?: string, status?: string) =>
@@ -158,13 +128,7 @@ export function Admin() {
           <div className="eyebrow">{t("నిర్వహణ", "ADMINISTRATION")}</div>
           <h1>{t("మీ రచనల వేదిక", "Your writing desk")}</h1>
         </div>
-        <a
-          className="button secondary"
-          href="/signout-with-chatgpt?return_to=/admin"
-          target="_top"
-        >
-          {t("నిష్క్రమించండి", "Sign out")}
-        </a>
+        <LogoutButton />
       </div>
       <div className="stats">
         {[
@@ -642,12 +606,55 @@ function Editor({
     setUploading(true);
     setError("");
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const r = await api<{ id: string }>("uploads", {
-        method: "POST",
-        body: form,
-      });
+      if (
+        file.size > 10 * 1024 * 1024 ||
+        !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(
+          file.type,
+        )
+      )
+        throw new Error(
+          t(
+            "10 MB లోపు PDF లేదా చిత్రాన్ని ఎంచుకోండి.",
+            "Choose a PDF or supported image up to 10 MB.",
+          ),
+        );
+      const ticket = await api<{ id?: string; url?: string; local: boolean }>(
+        "storage/presign",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: file.name,
+            mime: file.type,
+            size: file.size,
+          }),
+        },
+      );
+      let r: { id: string };
+      if (ticket.local) {
+        const form = new FormData();
+        form.append("file", file);
+        r = await api<{ id: string }>("uploads", {
+          method: "POST",
+          body: form,
+        });
+      } else {
+        const response = await fetch(ticket.url!, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        if (!response.ok)
+          throw new Error(
+            t(
+              "అప్‌లోడ్ కాలేదు. మళ్ళీ ప్రయత్నించండి.",
+              "Upload failed. Try again.",
+            ),
+          );
+        r = await api<{ id: string }>("storage/complete", {
+          method: "POST",
+          body: JSON.stringify({ id: ticket.id }),
+        });
+      }
       setV((old) => ({
         ...old,
         ...(cover

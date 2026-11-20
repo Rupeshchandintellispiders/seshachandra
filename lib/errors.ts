@@ -1,5 +1,7 @@
 export function errorInTelugu(code: string): string {
   const messages: Record<string, string> = {
+    INVALID_CREDENTIALS: "ఈమెయిల్ లేదా పాస్‌వర్డ్ సరైనది కాదు.",
+    RATE_LIMITED: "చాలా ప్రయత్నాలు జరిగాయి. 15 నిమిషాల తర్వాత ప్రయత్నించండి.",
     UNAUTHORIZED: "నిర్వాహక అనుమతితో ప్రవేశించండి.",
     ORIGIN_REJECTED: "ఈ అభ్యర్థన అనుమతించబడలేదు. పేజీని మళ్ళీ తెరవండి.",
     DATABASE_UNAVAILABLE:

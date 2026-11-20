@@ -13,12 +13,28 @@ const Language = createContext({
   setLang: (_v: string) => {},
 });
 export const useLanguage = () => useContext(Language);
-export function Shell({ children }: { children: ReactNode }) {
-  const [lang, setLang] = useState("te");
+function rememberLanguage(v: string) {
+  // A cookie lets the server render the chosen language on the next visit.
+  document.cookie = `sc-language=${v}; path=/; max-age=31536000; samesite=lax`;
+}
+export function Shell({
+  children,
+  initialLang = "te",
+}: {
+  children: ReactNode;
+  initialLang?: "te" | "en";
+}) {
+  const [lang, setLang] = useState<string>(initialLang);
   const [menu, setMenu] = useState(false);
   useEffect(() => {
+    // One-time move of the older localStorage preference into the cookie.
     try {
-      setLang(localStorage.getItem("sc-language") === "en" ? "en" : "te");
+      const saved = localStorage.getItem("sc-language");
+      if (saved && !document.cookie.includes("sc-language=")) {
+        rememberLanguage(saved === "en" ? "en" : "te");
+        setLang(saved === "en" ? "en" : "te");
+      }
+      localStorage.removeItem("sc-language");
     } catch {}
   }, []);
   useEffect(() => {
@@ -26,9 +42,7 @@ export function Shell({ children }: { children: ReactNode }) {
   }, [lang]);
   const change = (v: string) => {
     setLang(v);
-    try {
-      localStorage.setItem("sc-language", v);
-    } catch {}
+    rememberLanguage(v);
   };
   const t = (te: string, en: string) => (lang === "te" ? te : en);
   return (

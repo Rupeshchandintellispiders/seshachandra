@@ -1,7 +1,7 @@
 import { env } from "./environment";
 import { database } from "@/db/mysql";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
-import { isAllowedAdmin } from "./validation";
+import { currentAdmin } from "./auth";
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -11,18 +11,20 @@ export class ApiError extends Error {
     super(message);
   }
 }
-export function bindings() { return database; }
+export function bindings() {
+  return database;
+}
 export async function admin() {
-  const user = await getChatGPTUser();
-  const vars = env as unknown as Record<string, string>;
-  return {
-    user,
-    allowed: isAllowedAdmin(
-      user?.userId ?? null,
-      vars.ADMIN_USER_IDS || "",
-      import.meta.env.DEV,
-    ),
-  };
+  const user = await currentAdmin();
+  return { user, allowed: !!user };
+}
+export function assertOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  const expected = process.env.SITE_URL
+    ? new URL(process.env.SITE_URL).origin
+    : new URL(request.url).origin;
+  if (!origin || origin !== expected)
+    throw new ApiError(403, "ORIGIN_REJECTED", "Request origin was rejected.");
 }
 export async function requireAdmin(request?: Request) {
   const state = await admin();
@@ -32,24 +34,25 @@ export async function requireAdmin(request?: Request) {
       "UNAUTHORIZED",
       "Administrator sign-in required.",
     );
-  if (request && !["GET", "HEAD"].includes(request.method)) {
-    const origin = request.headers.get("origin");
-    if (!origin || origin !== new URL(request.url).origin)
-      throw new ApiError(
-        403,
-        "ORIGIN_REJECTED",
-        "Request origin was rejected.",
-      );
-  }
+  if (request && !["GET", "HEAD"].includes(request.method))
+    assertOrigin(request);
   return state.user!;
 }
 export function errorResponse(error: unknown) {
+  if (error instanceof SyntaxError)
+    return Response.json(
+      { error: "Invalid JSON request.", code: "VALIDATION" },
+      { status: 400 },
+    );
   if (error instanceof ApiError)
     return Response.json(
       { error: error.message, code: error.code },
       { status: error.status },
     );
-  if (error instanceof Error && /UNIQUE constraint|Duplicate entry/.test(error.message))
+  if (
+    error instanceof Error &&
+    /UNIQUE constraint|Duplicate entry/.test(error.message)
+  )
     return Response.json(
       {
         error: "This slug or YouTube video already exists.",
@@ -93,4 +96,3 @@ export function decodeWork(row: Record<string, unknown>) {
     updatedAt: row.updated_at,
   };
 }
-

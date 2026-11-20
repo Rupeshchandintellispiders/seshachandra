@@ -7,18 +7,26 @@
   },
   "scripts": {
     "install:ci": "node scripts/install-ci.mjs",
-    "dev": "node scripts/run-framework.mjs dev",
-    "build": "node scripts/run-framework.mjs build",
-    "start": "vinext start --hostname 127.0.0.1 --port 4173",
+    "dev": "next dev --webpack --hostname 127.0.0.1 --port 4173",
+    "build": "next build --webpack",
+    "start": "next start --hostname 127.0.0.1 --port 4173",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "node scripts/check-node.mjs && tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "db:setup": "node scripts/db-setup.mjs",
     "predev": "node scripts/check-node.mjs",
     "prebuild": "node scripts/check-node.mjs",
-    "test:integration": "node scripts/test-integration.mjs"
+    "test:integration": "node scripts/test-vercel.mjs",
+    "admin:create": "node scripts/admin-create.mjs",
+    "db:export": "node scripts/export-content.mjs",
+    "db:import": "node scripts/import-content.mjs",
+    "files:migrate": "node scripts/migrate-files.mjs",
+    "test:vercel": "node scripts/test-vercel.mjs",
+    "test:transfer": "node scripts/test-transfer.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/s3-request-presigner": "^3.0.0",
     "@base-ui/react": "^1.7.0",
     "@hookform/resolvers": "^5.7.1",
     "@shadcn/react": "^0.3.0",
@@ -32,7 +40,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^1.31.0",
     "mysql2": "^3.24.6",
-    "next": "16.3.4",
+    "next": "^16.4.5",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.6.7",
     "react": "19.2.6",
@@ -44,7 +52,7 @@
     "sonner": "^2.0.8",
     "tailwind-merge": "3.6.0",
     "vaul": "^1.1.2",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
@@ -57,7 +65,7 @@
     "@vitejs/plugin-rsc": "0.5.26",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "^16.4.5",
     "json-rpc-2.0": "1.7.1",
     "raw-body": "3.0.2",
     "react-server-dom-webpack": "19.2.6",

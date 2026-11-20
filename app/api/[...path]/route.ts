@@ -1,4 +1,6 @@
+import {cloudStorage,downloadUrl} from '@/lib/storage';
 import { env } from "@/lib/environment";
+import { listWorks, listCategories, getSettings } from "@/lib/content";
 import {
   bindings,
   admin,
@@ -11,11 +13,11 @@ import {
   workSchema,
   categorySchema,
   settingsSchema,
-  defaultSettings,
   youtubeId,
   validFile,
 } from "@/lib/validation";
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 const columns = [
   "type",
   "title",
@@ -79,61 +81,16 @@ async function handle(
             headers: { "Cache-Control": "no-store" },
           });
         }
-        const where: string[] = isAdmin ? [] : ["status='published'"];
-        const args: unknown[] = [];
-        for (const [param, column] of [
-          ["type", "type"],
-          ["category", "category_id"],
-        ] as const)
-          if (u.searchParams.get(param)) {
-            where.push(`${column}=?`);
-            args.push(u.searchParams.get(param));
-          }
-        if (u.searchParams.get("featured") === "1") where.push("featured=1");
-        if (u.searchParams.get("q")) {
-          where.push(
-            "(title LIKE ? ESCAPE '\\\\' OR description LIKE ? ESCAPE '\\\\' OR tags LIKE ? ESCAPE '\\\\')",
-          );
-          const q =
-            "%" +
-            u.searchParams
-              .get("q")!
-              .slice(0, 200)
-              .replace(/[\\%_]/g, "\\$&") +
-            "%";
-          args.push(q, q, q);
-        }
-        const clause = where.length ? "WHERE " + where.join(" AND ") : "";
-        const page = Math.max(
-          1,
-          Math.min(100000, Number(u.searchParams.get("page")) || 1),
-        );
-        const limit = 12;
-        const sort =
-          u.searchParams.get("sort") === "oldest"
-            ? "created_at ASC"
-            : u.searchParams.get("sort") === "title"
-              ? "title ASC"
-              : "created_at DESC";
-        const [count, rows] = await Promise.all([
-          db
-            .prepare(`SELECT count(*) AS total FROM works ${clause}`)
-            .bind(...args)
-            .first<{ total: number }>(),
-          db
-            .prepare(
-              `SELECT * FROM works ${clause} ORDER BY ${sort}, id LIMIT ? OFFSET ?`,
-            )
-            .bind(...args, limit, (page - 1) * limit)
-            .all<Record<string, unknown>>(),
-        ]);
         return Response.json(
-          {
-            items: rows.results.map(decodeWork),
-            total: count?.total || 0,
-            page,
-            pages: Math.ceil((count?.total || 0) / limit),
-          },
+          await listWorks({
+            admin: isAdmin,
+            type: u.searchParams.get("type"),
+            category: u.searchParams.get("category"),
+            featured: u.searchParams.get("featured") === "1",
+            q: u.searchParams.get("q"),
+            page: u.searchParams.get("page"),
+            sort: u.searchParams.get("sort"),
+          }),
           { headers: { "Cache-Control": "no-store" } },
         );
       }
@@ -236,12 +193,7 @@ async function handle(
     }
     if (resource === "categories") {
       if (method === "GET") {
-        const rows = await db
-          .prepare(
-            "SELECT id,name_te AS nameTe,name_en AS nameEn,position FROM categories ORDER BY position,name_en",
-          )
-          .all();
-        return Response.json(rows.results);
+        return Response.json(await listCategories());
       }
       if (method === "DELETE" && id) {
         await db.batch([
@@ -273,10 +225,7 @@ async function handle(
     }
     if (resource === "settings") {
       if (method === "GET") {
-        const row = await db
-          .prepare("SELECT `value` FROM settings WHERE id='site'")
-          .first<{ value: string }>();
-        return Response.json(row ? JSON.parse(row.value) : defaultSettings);
+        return Response.json(await getSettings());
       }
       if (method === "PUT") {
         const parsed = settingsSchema.safeParse(await request.json());
@@ -305,6 +254,7 @@ async function handle(
       return Response.json(rows.results);
     }
     if (resource === "uploads" && method === "POST") {
+      if(cloudStorage())throw new ApiError(400,"DIRECT_UPLOAD_REQUIRED","Use the direct upload flow.");
       if (!env.BUCKET)
         throw new ApiError(
           503,
@@ -369,6 +319,7 @@ async function handle(
         .bind(id, id)
         .first();
       if (!published) await requireAdmin();
+      if(cloudStorage())return new Response(null,{status:302,headers:{Location:await downloadUrl(id),"Cache-Control":"private, no-store"}});
       const object = await env.BUCKET?.get(id);
       if (!object) throw new ApiError(404, "NOT_FOUND", "File not found.");
       return new Response(object.body, {

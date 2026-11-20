@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Shell } from "@/components/shell";
+import { currentLanguage } from "@/lib/content";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -12,21 +13,29 @@ export const metadata: Metadata = {
   },
   description:
     "తెలుగు కథలు, రచనలు, వీడియోలు — Telugu stories, literature and videos from Seshachandra Creations.",
+  openGraph: {
+    type: "website",
+    siteName: "Seshachandra Creations",
+    locale: "te_IN",
+    alternateLocale: ["en_IN"],
+  },
+  twitter: { card: "summary_large_image" },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const lang = await currentLanguage();
   return (
-    <html lang="te">
+    <html lang={lang}>
       <body>
-        <Shell>{children}</Shell>
+        <Shell initialLang={lang}>{children}</Shell>
       </body>
     </html>
   );
