@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import http from "node:http";
+import net from "node:net";
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import mysql from "mysql2/promise";
@@ -50,6 +51,53 @@ const mock = http.createServer(async (req, res) => {
 });
 await new Promise((resolve) => mock.listen(0, "127.0.0.1", resolve));
 const endpoint = "http://127.0.0.1:" + mock.address().port;
+// Minimal SMTP server that records messages instead of delivering them.
+const mails = [];
+const CRLF = "\r\n";
+const smtp = net.createServer((socket) => {
+  let buffer = "",
+    inData = false,
+    current = { to: [], data: "" };
+  const reply = (line) => socket.write(line + CRLF);
+  reply("220 test-mail ready");
+  socket.on("data", (chunk) => {
+    buffer += chunk.toString("utf8");
+    while (true) {
+      if (inData) {
+        const end = buffer.indexOf(CRLF + "." + CRLF);
+        if (end === -1) return;
+        current.data = buffer.slice(0, end);
+        buffer = buffer.slice(end + 5);
+        inData = false;
+        mails.push(current);
+        current = { to: [], data: "" };
+        reply("250 queued");
+        continue;
+      }
+      const eol = buffer.indexOf(CRLF);
+      if (eol === -1) return;
+      const line = buffer.slice(0, eol);
+      buffer = buffer.slice(eol + 2);
+      const verb = line.slice(0, 4).toUpperCase();
+      if (verb === "EHLO" || verb === "HELO") reply("250 test-mail");
+      else if (verb === "RCPT") {
+        current.to.push(line.slice(line.indexOf(":") + 1).replace(/[<>\s]/g, ""));
+        reply("250 ok");
+      } else if (verb === "DATA") {
+        inData = true;
+        reply("354 send");
+      } else if (verb === "QUIT") {
+        reply("221 bye");
+        socket.end();
+      } else reply("250 ok");
+    }
+  });
+});
+await new Promise((resolve) => smtp.listen(0, "127.0.0.1", resolve));
+const decodeQuotedPrintable = (text) =>
+  text
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 let cookie = "";
 async function call(
   path,
@@ -121,6 +169,10 @@ try {
         S3_BUCKET: "test-bucket",
         S3_ACCESS_KEY_ID: "test-access",
         S3_SECRET_ACCESS_KEY: "test-secret",
+        SMTP_HOST: "127.0.0.1",
+        SMTP_PORT: String(smtp.address().port),
+        SMTP_FROM: "Seshachandra Test <noreply@example.test>",
+        SMTP_USER: "",
       },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
@@ -198,6 +250,28 @@ try {
   await check(
     "/api/auth/login",
     { method: "POST", body: { email, password }, origin: "https://evil.test" },
+    403,
+  );
+  // The site's own address is accepted even when it differs from SITE_URL
+  // (Vercel preview URLs, custom domains); other sites still are not.
+  await check(
+    "/api/auth/login",
+    {
+      method: "POST",
+      body: { email, password: "wrong" },
+      origin: "https://preview-123.example.test",
+      headers: { "x-forwarded-host": "preview-123.example.test", "x-forwarded-proto": "https" },
+    },
+    401,
+  );
+  await check(
+    "/api/auth/login",
+    {
+      method: "POST",
+      body: { email, password },
+      origin: "https://evil.test",
+      headers: { "x-forwarded-host": "preview-123.example.test", "x-forwarded-proto": "https" },
+    },
     403,
   );
   await check(
@@ -563,6 +637,146 @@ try {
   );
   await check("/api/works?admin=1", { headers: { cookie: thirdCookie } }, 401);
   await check("/api/works?admin=1", { headers: { cookie: secondCookie } }, 401);
+  // ---- Forgot password by email (captured by the local test mail server) ----
+  const latestResetToken = async (to) => {
+    for (let i = 0; i < 50 && !mails.some((m) => m.to.includes(to)); i++)
+      await new Promise((r) => setTimeout(r, 100));
+    const mail = mails.filter((m) => m.to.includes(to)).pop();
+    assert.ok(mail, "reset email was not delivered");
+    const token = decodeQuotedPrintable(mail.data).match(
+      /\/admin\/reset\?token=([a-f0-9]{64})/,
+    )?.[1];
+    assert.ok(token, "reset email has no link");
+    return token;
+  };
+  const forgotPage = await (await check("/admin/forgot", { auth: false }, 200)).text();
+  assert.doesNotMatch(forgotPage, /can't send email yet|ఈమెయిల్ పంపే సేవ ఇంకా/);
+  passed++;
+  await check(
+    "/api/auth/forgot",
+    { method: "POST", body: { email }, auth: false, origin: "https://evil.test" },
+    403,
+  );
+  // Unknown emails get the same answer and no email is sent.
+  const mailsBefore = mails.length;
+  const unknown = await check(
+    "/api/auth/forgot",
+    { method: "POST", body: { email: "nobody-" + Date.now() + "@example.test" }, auth: false },
+    200,
+  );
+  assert.deepEqual(await unknown.json(), { ok: true, email: true });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(mails.length, mailsBefore);
+  passed += 2;
+  await check("/api/auth/forgot", { method: "POST", body: { email }, auth: false }, 200);
+  const firstToken = await latestResetToken(email);
+  // A newer request replaces the older link.
+  mails.length = 0;
+  await check("/api/auth/forgot", { method: "POST", body: { email }, auth: false }, 200);
+  const resetToken = await latestResetToken(email);
+  assert.notEqual(resetToken, firstToken);
+  passed++;
+  const resetPage = await (
+    await check("/admin/reset?token=" + resetToken, { auth: false }, 200)
+  ).text();
+  assert.doesNotMatch(resetPage, /href="\/admin\/forgot"/);
+  const badPage = await (
+    await check("/admin/reset?token=" + "0".repeat(64), { auth: false }, 200)
+  ).text();
+  assert.match(badPage, /href="\/admin\/forgot"/);
+  passed += 2;
+  await check(
+    "/api/auth/reset",
+    { method: "POST", body: { token: firstToken, password: "a-perfectly-fine-password" }, auth: false },
+    400,
+  );
+  await check(
+    "/api/auth/reset",
+    { method: "POST", body: { token: resetToken, password: "short" }, auth: false },
+    400,
+  );
+  await login();
+  const beforeReset = cookie;
+  password = crypto.randomUUID() + "R!";
+  await check(
+    "/api/auth/reset",
+    { method: "POST", body: { token: resetToken, password }, auth: false },
+    200,
+  );
+  // The link works once, and a reset signs out every device.
+  await check(
+    "/api/auth/reset",
+    { method: "POST", body: { token: resetToken, password: "another-long-password" }, auth: false },
+    400,
+  );
+  await check("/api/works?admin=1", { headers: { cookie: beforeReset } }, 401);
+  await login();
+  // Too many reset requests for one email from one address are refused.
+  const floodEmail = "flood-" + Date.now() + "@example.test";
+  for (let i = 0; i < 3; i++)
+    await check("/api/auth/forgot", { method: "POST", body: { email: floodEmail }, auth: false }, 200);
+  await check("/api/auth/forgot", { method: "POST", body: { email: floodEmail }, auth: false }, 429);
+
+  // ---- Recovery codes ----
+  await check(
+    "/api/auth/recovery-codes",
+    { method: "POST", body: { current: password }, auth: false },
+    401,
+  );
+  await check(
+    "/api/auth/recovery-codes",
+    { method: "POST", body: { current: "wrong-password" } },
+    400,
+  );
+  const { codes } = await (
+    await check("/api/auth/recovery-codes", { method: "POST", body: { current: password } }, 200)
+  ).json();
+  assert.equal(codes.length, 8);
+  assert.ok(codes.every((code) => /^[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{2}$/.test(code)));
+  assert.equal(new Set(codes).size, 8);
+  const [stored] = await c.execute("SELECT code_hash FROM recovery_codes WHERE admin_id=?", [adminId]);
+  assert.equal(stored.length, 8);
+  assert.ok(stored.every((r) => !codes.some((code) => r.code_hash.includes(code))));
+  passed += 4;
+  await check(
+    "/api/auth/recover",
+    { method: "POST", body: { email, code: "AAAA-BBBB-CC", password: "a-perfectly-fine-password" }, auth: false },
+    400,
+  );
+  await check(
+    "/api/auth/recover",
+    { method: "POST", body: { email: "nobody@example.test", code: codes[0], password: "a-perfectly-fine-password" }, auth: false },
+    400,
+  );
+  const beforeRecover = cookie;
+  password = crypto.randomUUID() + "C!";
+  // Case, spaces and dashes are forgiven when typing a code.
+  const typed = codes[0].toLowerCase().replace(/-/g, " ");
+  const recovered = await (
+    await check("/api/auth/recover", { method: "POST", body: { email, code: typed, password }, auth: false }, 200)
+  ).json();
+  assert.equal(recovered.codesLeft, 7);
+  passed++;
+  await check("/api/works?admin=1", { headers: { cookie: beforeRecover } }, 401);
+  await check(
+    "/api/auth/recover",
+    { method: "POST", body: { email, code: codes[0], password: "a-perfectly-fine-password" }, auth: false },
+    400,
+  );
+  await login();
+  // New codes replace the old set.
+  await check("/api/auth/recovery-codes", { method: "POST", body: { current: password } }, 200);
+  await check(
+    "/api/auth/recover",
+    { method: "POST", body: { email, code: codes[1], password: "a-perfectly-fine-password" }, auth: false },
+    400,
+  );
+  await check("/admin/account", {}, 200);
+  for (const p of ["/admin/forgot", "/admin/reset", "/admin/recover"]) {
+    const r = await check(p, { auth: false }, 200);
+    assert.match(r.headers.get("x-robots-tag") || "", /noindex/);
+    passed++;
+  }
   await login();
   await c.execute("UPDATE admin_sessions SET expires_at=0 WHERE admin_id=?", [
     adminId,
@@ -596,4 +810,5 @@ try {
     child.kill();
   }
   mock.close();
+  smtp.close();
 }

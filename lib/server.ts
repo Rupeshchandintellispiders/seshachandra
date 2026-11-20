@@ -11,13 +11,33 @@ export async function admin() {
   const user = await currentAdmin();
   return { user, allowed: !!user };
 }
+/**
+ * Blocks cross-site form posts: the browser's Origin header must be this site.
+ * Accepted: SITE_URL, and the address the request itself arrived at (so
+ * preview URLs, custom domains and localhost/127.0.0.1 work). Other sites
+ * cannot forge either, because browsers set Origin and Host themselves.
+ */
 export function assertOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  const expected = process.env.SITE_URL
-    ? new URL(process.env.SITE_URL).origin
-    : new URL(request.url).origin;
-  if (!origin || origin !== expected)
+  if (!origin || !allowedOrigins(request).has(origin))
     throw new ApiError(403, "ORIGIN_REJECTED", "Request origin was rejected.");
+}
+function allowedOrigins(request: Request) {
+  const allowed = new Set<string>();
+  const add = (value: string | undefined | null) => {
+    try {
+      if (value) allowed.add(new URL(value).origin);
+    } catch {
+      // An invalid SITE_URL simply adds nothing.
+    }
+  };
+  add(process.env.SITE_URL);
+  add(request.url);
+  // Behind a proxy (e.g. Vercel) the public address arrives in these headers.
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0].trim();
+  if (host) add(`${proto || new URL(request.url).protocol.replace(":", "")}://${host.split(",")[0].trim()}`);
+  return allowed;
 }
 export async function requireAdmin(request?: Request) {
   const state = await admin();

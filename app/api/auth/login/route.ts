@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
-import type { RowDataPacket } from "mysql2";
-import { database, getPool } from "@/db/mysql";
+import { database } from "@/db/mysql";
 import { verifyPassword, hashPassword } from "@/lib/password.mjs";
 import {
   sessionCookie,
@@ -10,45 +9,14 @@ import {
   clientIp,
   loginLimits,
   safeNext,
+  allowAttempt,
+  clearAttempts,
+  attemptWindowMs,
 } from "@/lib/auth";
 import { assertOrigin, errorResponse, ApiError } from "@/lib/server";
 export const runtime = "nodejs";
-const windowMs = 15 * 60 * 1000;
 // Compared against when the email is unknown, so timing does not reveal accounts.
 const dummyHash = hashPassword("unused-password-value");
-/** Counts this attempt against every limit; false when any limit is used up. */
-async function allowAttempt(keys: { key: string; max: number }[]) {
-  const now = Date.now();
-  const c = await getPool().getConnection();
-  try {
-    await c.beginTransaction();
-    let allowed = true;
-    for (const { key, max } of keys) {
-      await c.execute(
-        "INSERT IGNORE INTO login_limits(identifier,attempts,window_start) VALUES(?,0,?)",
-        [key, now],
-      );
-      const [rows] = await c.execute<RowDataPacket[]>(
-        "SELECT attempts,window_start FROM login_limits WHERE identifier=? FOR UPDATE",
-        [key],
-      );
-      const expired = now - Number(rows[0].window_start) > windowMs;
-      const attempts = expired ? 0 : Number(rows[0].attempts);
-      if (attempts >= max) allowed = false;
-      await c.execute(
-        "UPDATE login_limits SET attempts=?,window_start=? WHERE identifier=?",
-        [attempts + 1, expired ? now : rows[0].window_start, key],
-      );
-    }
-    await c.commit();
-    return allowed;
-  } catch (e) {
-    await c.rollback();
-    throw e;
-  } finally {
-    c.release();
-  }
-}
 export async function POST(request: Request) {
   try {
     assertOrigin(request);
@@ -91,12 +59,7 @@ export async function POST(request: Request) {
         { status: 401 },
       );
     // A correct password clears this person's counters.
-    await database
-      .prepare(
-        `DELETE FROM login_limits WHERE identifier IN (${limits.map(() => "?").join(",")})`,
-      )
-      .bind(...limits.map((l) => l.key))
-      .run();
+    await clearAttempts(limits);
     const now = Date.now();
     await database
       .prepare("DELETE FROM admin_sessions WHERE expires_at<?")
@@ -104,7 +67,7 @@ export async function POST(request: Request) {
       .run();
     await database
       .prepare("DELETE FROM login_limits WHERE window_start<?")
-      .bind(now - windowMs)
+      .bind(now - attemptWindowMs)
       .run();
     const token = randomBytes(32).toString("hex");
     await database

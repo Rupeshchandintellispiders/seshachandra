@@ -106,6 +106,27 @@ npm run admin:create -- your@email.com
 
 Passwords are salted with scrypt. Sessions are random tokens stored in HttpOnly/SameSite=Strict cookies (Secure in production), with only token hashes stored in MySQL. Sessions expire after eight hours. All content mutations, upload authorization/finalization, imports and settings enforce server-side admin checks and same-origin validation. Every `/admin` URL is guarded twice: `proxy.ts` sends visitors without a session cookie to `/admin/login` (remembering the page they wanted), and each admin page and API call verifies the session in MySQL. Admin responses are marked no-store, noindex and not frameable. The public site no longer links to the admin; bookmark `https://YOUR_SITE/admin`. Login attempts are limited per 15 minutes to 5 per email and address, 20 per address and 50 per email (unknown accounts included), so a stranger guessing passwords cannot lock the owner out from another network. The address comes from Vercel's `x-real-ip`/`x-forwarded-for` headers; on hosts that do not set these, only the per-email limit is reliable. Sign-out deletes the server session; **Account → Sign out everywhere** ends all sessions, and **Account → Change password** requires the current password and signs out other devices. Rerun `admin-create.mjs` for an existing email to reset a forgotten password and revoke that admin's sessions. There is no password-reset email service; the site owner runs this command.
 
+### Forgotten passwords
+
+The sign-in page has **Forgot password?**, with two ways back in:
+
+- **Email link (needs SMTP, below).** Enter your admin email and a one-time link arrives, valid for 30 minutes. Asking again replaces the previous link. The page gives the same answer for unknown emails, so it cannot be used to discover accounts. Using the link signs out every device.
+- **Recovery codes (works without email).** After signing in, open **Account → Recovery codes**, confirm your password and save the 8 codes shown (copy or download). Each code works once at `/admin/recover`; creating new codes cancels the old ones. Only hashes of codes and links are stored.
+
+If both are unavailable, run `admin-create.mjs` for your email as above.
+
+**Email setup (optional).** Any SMTP provider works. For example, a Gmail account with 2-step verification and an [app password](https://support.google.com/accounts/answer/185833), Zoho Mail, Brevo, or Resend's SMTP. Add to Vercel (and `.env` to try locally):
+
+```dotenv
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-address@gmail.com
+SMTP_PASSWORD=your-16-character-app-password
+SMTP_FROM="Seshachandra Creations <your-address@gmail.com>"
+```
+
+Port 465 uses TLS directly; other ports must upgrade with STARTTLS, which is required for any non-local host. Use an app-specific password, never your main mail password. Many providers require `SMTP_FROM` to match the account or a verified domain. Test it from `/admin/forgot` after deploying. If sending fails, the page says so and the server log has the reason.
+
 ## 5. Vercel project settings
 
 Select the **Next.js** framework preset, repository root as the Root Directory, Node.js **22.x**, install command `npm ci`, and build command `npm run build`. The build uses Next.js's Webpack mode, which is supported by Vercel. Output Directory should use the framework default. `vercel.json` records the framework/install/build settings.
@@ -120,6 +141,7 @@ Set these server-only environment variables in Vercel for the appropriate Produc
 | `SITE_URL` | Exact origin, e.g. `https://your-project.vercel.app`, no trailing slash |
 | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Private object-storage settings |
 | `YOUTUBE_API_KEY` | Optional, for the admin's YouTube Data API importer |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Optional, for password-reset emails |
 
 Do not prefix any credentials with `NEXT_PUBLIC_`. Vercel provides `NODE_ENV` itself. Do not copy your laptop's `127.0.0.1`, local root credentials, `UPLOAD_DIRECTORY`, `ADMIN_SETUP_PASSWORD`, or the obsolete `ADMIN_USER_IDS` setting into Vercel. Production refuses local filesystem uploads when S3 is missing.
 

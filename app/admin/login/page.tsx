@@ -9,10 +9,13 @@ export const metadata = {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string | string[] }>;
+  searchParams: Promise<{ next?: string | string[]; reset?: string }>;
 }) {
-  const raw = (await searchParams).next;
+  const search = await searchParams;
+  const raw = search.next;
   const next = safeNext(Array.isArray(raw) ? raw[0] : raw);
   if (await currentAdmin()) redirect(next);
-  return <Login next={next} expired={raw !== undefined} />;
+  return (
+    <Login next={next} expired={raw !== undefined} reset={search.reset === "1"} />
+  );
 }

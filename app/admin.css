@@ -573,3 +573,68 @@
     top: 58px;
   }
 }
+
+/* Password recovery */
+.adm-forgot-link {
+  margin: -8px 0 14px;
+  text-align: right;
+  font-size: 13px;
+}
+.adm-forgot-link a,
+.adm-alt-option a {
+  color: var(--burgundy);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.adm-alt-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 20px 0 0;
+  font-size: 14px;
+  color: var(--burgundy);
+}
+.adm-auth-back {
+  margin: 18px 0 0;
+}
+.adm-code-input {
+  font-family: ui-monospace, Consolas, monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.adm-codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 16px;
+  list-style: none;
+  background: #fbf6ec;
+  border: 1px dashed #bba77f;
+  border-radius: 6px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.adm-recovery {
+  margin-top: 20px;
+}
+.adm-recovery h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.adm-inline-password {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.adm-inline-password label {
+  flex: 1 1 260px;
+  margin: 0;
+}
+.adm-small {
+  font-size: 12px;
+  margin-top: 10px;
+}

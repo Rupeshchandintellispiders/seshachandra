@@ -14,7 +14,7 @@ export function proxy(request: NextRequest) {
   const admin = pathname === "/admin" || pathname.startsWith("/admin/");
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const csp = policy(nonce);
-  if (admin && pathname !== "/admin/login" && !hasSessionCookie(request)) {
+  if (admin && !publicAdminPaths.includes(pathname) && !hasSessionCookie(request)) {
     const login = new URL("/admin/login", request.url);
     login.searchParams.set("next", pathname + search);
     return secure(NextResponse.redirect(login), csp, true);
@@ -24,6 +24,15 @@ export function proxy(request: NextRequest) {
   headers.set("Content-Security-Policy", csp);
   return secure(NextResponse.next({ request: { headers } }), csp, admin);
 }
+
+// Signed-out pages: sign-in and password recovery. Keep in step with
+// publicAdminPaths in lib/auth.ts (the proxy cannot import database code).
+const publicAdminPaths = [
+  "/admin/login",
+  "/admin/forgot",
+  "/admin/reset",
+  "/admin/recover",
+];
 
 function hasSessionCookie(request: NextRequest) {
   const token = request.cookies.get("sc_admin_session")?.value;

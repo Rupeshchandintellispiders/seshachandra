@@ -2,14 +2,19 @@
 import { useRef, useState } from "react";
 import { api, useLanguage } from "../shell";
 import { Flash, PageHeader, useAction } from "./common";
+import { RecoveryCodes } from "./recovery-codes";
 
 export function Account({
   email,
   sessions,
+  codesLeft,
+  emailAvailable,
 }: {
   email: string;
   /** Active sign-ins for this admin, including this browser. */
   sessions: number;
+  codesLeft: number;
+  emailAvailable: boolean;
 }) {
   const { t } = useLanguage();
   const { busy, error, notice, run, setError } = useAction();
@@ -125,6 +130,11 @@ export function Account({
           </button>
         </section>
       </div>
+      <RecoveryCodes
+        email={email}
+        codesLeft={codesLeft}
+        emailAvailable={emailAvailable}
+      />
     </>
   );
 }
