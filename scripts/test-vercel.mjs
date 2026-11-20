@@ -266,6 +266,7 @@ try {
   );
   assert.ok(!objects.has("/test-bucket/files/" + bad.id));
   passed++;
+  const slug = "qa-vercel-" + Date.now();
   const row = await (
     await check(
       "/api/works",
@@ -274,7 +275,7 @@ try {
         body: {
           type: "story",
           title: "QA Vercel upload",
-          slug: "qa-vercel-" + Date.now(),
+          slug,
           status: "draft",
           body: "పరీక్ష మాత్రమే",
           attachmentIds: [complete.id],
@@ -293,12 +294,51 @@ try {
     200,
   );
   await check("/api/uploads/" + complete.id, { auth: false }, 302);
+  // Public pages are server-rendered: content must be in the first HTML response.
+  async function page(path, status, options = {}) {
+    const r = await check(path, { auth: false, ...options }, status);
+    return r.text();
+  }
+  const published = await page("/work/" + slug, 200);
+  assert.match(published, /QA Vercel upload/);
+  assert.match(published, /<script type="application\/ld\+json">[^<]*"@type":"ShortStory"/);
+  assert.match(published, /<meta property="og:title" content="QA Vercel upload"/);
+  passed += 3;
+  const search = await page("/library?q=QA+Vercel+upload", 200);
+  assert.match(search, /class="card" href="\/work\/[^"]*qa-vercel-/);
+  assert.match(search, /<meta name="robots" content="noindex, follow"/);
+  assert.doesNotMatch(search, /Loading…|లోడ్ అవుతోంది/);
+  passed += 3;
+  const home = await page("/", 200);
+  assert.match(home, /class="card"/);
+  assert.doesNotMatch(home, /Loading…|లోడ్ అవుతోంది/);
+  passed += 2;
+  assert.match(await page("/about", 200), /<link rel="canonical" href="[^"]*\/about"/);
+  passed++;
+  const english = await page("/library", 200, {
+    headers: { cookie: "sc-language=en" },
+  });
+  assert.match(english, /<html lang="en"/);
+  assert.match(english, /The library/);
+  assert.match(await page("/library", 200), /<html lang="te"/);
+  passed += 3;
   await check(
     "/api/works/" + row.id,
     { method: "PUT", body: { ...work, status: "draft" } },
     200,
   );
   await check("/api/uploads/" + complete.id, { auth: false }, 401);
+  // Drafts are hidden from the public, including the preview URL without a session.
+  await page("/work/" + slug, 404);
+  await page("/work/" + slug + "?preview=1", 404);
+  assert.doesNotMatch(
+    await page("/library?q=QA+Vercel+upload", 200),
+    /qa-vercel-/,
+  );
+  passed++;
+  const preview = await check("/work/" + slug + "?preview=1", {}, 200);
+  assert.match(await preview.text(), /QA Vercel upload/);
+  passed++;
   await check(
     "/api/auth/logout",
     { method: "POST", body: {}, origin: "https://evil.test" },

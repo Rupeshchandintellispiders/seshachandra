@@ -1,14 +1,17 @@
 import { notFound } from "next/navigation";
 import { Reader } from "@/components/public";
-import { bindings, decodeWork, requireAdmin } from "@/lib/server";
+import { admin, bindings, decodeWork } from "@/lib/server";
 import type { Work } from "@/lib/validation";
 export const dynamic = "force-dynamic";
 type Props = {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ preview?: string }>;
 };
+/** Drafts are only visible as a preview to a signed-in admin. */
+async function canPreview(requested: boolean) {
+  return requested && (await admin()).allowed;
+}
 async function find(slug: string, preview = false) {
-  if (preview) await requireAdmin();
   const row = await bindings()
     .prepare(
       `SELECT * FROM works WHERE slug=? ${preview ? "" : "AND status='published'"}`,
@@ -90,12 +93,9 @@ function structuredData(work: Work) {
   return { ...common, "@type": "ShortStory" };
 }
 export default async function Page({ params, searchParams }: Props) {
-  const work = await find(
-    (await params).slug,
-    (await searchParams).preview === "1",
-  );
+  const preview = await canPreview((await searchParams).preview === "1");
+  const work = await find((await params).slug, preview);
   if (!work) notFound();
-  const preview = (await searchParams).preview === "1";
   return (
     <>
       {!preview && (

@@ -17,7 +17,8 @@ function rememberLanguage(v: string) {
   // A cookie lets the server render the chosen language on the next visit.
   document.cookie = `sc-language=${v}; path=/; max-age=31536000; samesite=lax`;
 }
-export function Shell({
+/** Holds the interface language for both the public site and the admin. */
+export function LanguageProvider({
   children,
   initialLang = "te",
 }: {
@@ -25,7 +26,6 @@ export function Shell({
   initialLang?: "te" | "en";
 }) {
   const [lang, setLang] = useState<string>(initialLang);
-  const [menu, setMenu] = useState(false);
   useEffect(() => {
     // One-time move of the older localStorage preference into the cookie.
     try {
@@ -47,6 +47,16 @@ export function Shell({
   const t = (te: string, en: string) => (lang === "te" ? te : en);
   return (
     <Language.Provider value={{ lang, t, setLang: change }}>
+      {children}
+    </Language.Provider>
+  );
+}
+/** Public site header and footer. */
+export function Shell({ children }: { children: ReactNode }) {
+  const { lang, t, setLang: change } = useLanguage();
+  const [menu, setMenu] = useState(false);
+  return (
+    <>
       <a className="skip" href="#main">
         {t("విషయానికి వెళ్ళండి", "Skip to content")}
       </a>
@@ -116,14 +126,13 @@ export function Shell({
         <div className="footer-links">
           <a href="/library">{t("రచనలు చూడండి", "Explore the library")}</a>
           <a href="/about">{t("పరిచయం & సంప్రదింపు", "About & contact")}</a>
-          <a href="/admin">{t("నిర్వాహక ప్రవేశం", "Admin sign-in")}</a>
         </div>
         <div className="footer-bottom">
           © {new Date().getFullYear()} Seshachandra Creations{" "}
           <span>{t("తెలుగు పట్ల ప్రేమతో", "With a love for Telugu")} ✦</span>
         </div>
       </footer>
-    </Language.Provider>
+    </>
   );
 }
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {

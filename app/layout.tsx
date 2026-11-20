@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Shell } from "@/components/shell";
+import { LanguageProvider } from "@/components/shell";
 import { currentLanguage } from "@/lib/content";
 
 export const metadata: Metadata = {
@@ -35,7 +35,7 @@ export default async function RootLayout({
   return (
     <html lang={lang}>
       <body>
-        <Shell initialLang={lang}>{children}</Shell>
+        <LanguageProvider initialLang={lang}>{children}</LanguageProvider>
       </body>
     </html>
   );

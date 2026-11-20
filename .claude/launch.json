@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "next-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "--package=node@22", "node", "node_modules/next/dist/bin/next", "dev", "--webpack", "--hostname", "127.0.0.1", "--port", "4173"],
+      "port": 4173
+    }
+  ]
+}

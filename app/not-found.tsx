@@ -1,8 +1,9 @@
 "use client";
-import { useLanguage } from "@/components/shell";
+import { Shell, useLanguage } from "@/components/shell";
 export default function NotFound() {
   const { t } = useLanguage();
   return (
+    <Shell>
     <div className="login-panel">
       <div className="eyebrow">404</div>
       <h1>{t("పేజీ కనుగొనబడలేదు", "Page not found")}</h1>
@@ -16,5 +17,6 @@ export default function NotFound() {
         {t("రచనల సంపుటికి", "Back to the library")} →
       </a>
     </div>
+    </Shell>
   );
 }
