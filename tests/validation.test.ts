@@ -86,3 +86,13 @@ test("Upload validation verifies magic bytes and rejects SVG / HTML", () => {
     true,
   );
 });
+
+import { hashPassword, verifyPassword } from "../lib/password.mjs";
+test("Admin passwords are salted and verified without plaintext storage", async () => {
+  const a = await hashPassword("test-password-long");
+  const b = await hashPassword("test-password-long");
+  assert.notEqual(a, b);
+  assert.ok(!a.includes("test-password-long"));
+  assert.equal(await verifyPassword("test-password-long", a), true);
+  assert.equal(await verifyPassword("wrong", a), false);
+});

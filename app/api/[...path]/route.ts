@@ -1,4 +1,6 @@
+import {cloudStorage,downloadUrl} from '@/lib/storage';
 import { env } from "@/lib/environment";
+import { listWorks, listCategories, getSettings } from "@/lib/content";
 import {
   bindings,
   admin,
@@ -11,11 +13,24 @@ import {
   workSchema,
   categorySchema,
   settingsSchema,
-  defaultSettings,
   youtubeId,
   validFile,
+  bulkSchema,
 } from "@/lib/validation";
 export const dynamic = "force-dynamic";
+/** The parts of YouTube Data API list responses this importer reads. */
+type YouTubeList = {
+  items?: {
+    contentDetails?: {
+      videoId?: string;
+      videoPublishedAt?: string;
+      relatedPlaylists?: { uploads?: string };
+    };
+    snippet?: { title?: string; description?: string; publishedAt?: string };
+  }[];
+  nextPageToken?: string;
+};
+export const runtime = "nodejs";
 const columns = [
   "type",
   "title",
@@ -79,63 +94,59 @@ async function handle(
             headers: { "Cache-Control": "no-store" },
           });
         }
-        const where: string[] = isAdmin ? [] : ["status='published'"];
-        const args: unknown[] = [];
-        for (const [param, column] of [
-          ["type", "type"],
-          ["category", "category_id"],
-        ] as const)
-          if (u.searchParams.get(param)) {
-            where.push(`${column}=?`);
-            args.push(u.searchParams.get(param));
-          }
-        if (u.searchParams.get("featured") === "1") where.push("featured=1");
-        if (u.searchParams.get("q")) {
-          where.push(
-            "(title LIKE ? ESCAPE '\\\\' OR description LIKE ? ESCAPE '\\\\' OR tags LIKE ? ESCAPE '\\\\')",
-          );
-          const q =
-            "%" +
-            u.searchParams
-              .get("q")!
-              .slice(0, 200)
-              .replace(/[\\%_]/g, "\\$&") +
-            "%";
-          args.push(q, q, q);
-        }
-        const clause = where.length ? "WHERE " + where.join(" AND ") : "";
-        const page = Math.max(
-          1,
-          Math.min(100000, Number(u.searchParams.get("page")) || 1),
-        );
-        const limit = 12;
-        const sort =
-          u.searchParams.get("sort") === "oldest"
-            ? "created_at ASC"
-            : u.searchParams.get("sort") === "title"
-              ? "title ASC"
-              : "created_at DESC";
-        const [count, rows] = await Promise.all([
-          db
-            .prepare(`SELECT count(*) AS total FROM works ${clause}`)
-            .bind(...args)
-            .first<{ total: number }>(),
-          db
-            .prepare(
-              `SELECT * FROM works ${clause} ORDER BY ${sort}, id LIMIT ? OFFSET ?`,
-            )
-            .bind(...args, limit, (page - 1) * limit)
-            .all<Record<string, unknown>>(),
-        ]);
         return Response.json(
-          {
-            items: rows.results.map(decodeWork),
-            total: count?.total || 0,
-            page,
-            pages: Math.ceil((count?.total || 0) / limit),
-          },
+          await listWorks({
+            admin: isAdmin,
+            type: u.searchParams.get("type"),
+            category: u.searchParams.get("category"),
+            status: u.searchParams.get("status"),
+            featured: u.searchParams.get("featured") === "1",
+            q: u.searchParams.get("q"),
+            page: u.searchParams.get("page"),
+            sort: u.searchParams.get("sort"),
+          }),
           { headers: { "Cache-Control": "no-store" } },
         );
+      }
+      if (method === "POST" && id === "bulk") {
+        const parsed = bulkSchema.safeParse(await request.json());
+        if (!parsed.success)
+          throw new ApiError(400, "VALIDATION", "Choose works and an action.");
+        const { ids, action, categoryId } = parsed.data;
+        if (
+          action === "category" &&
+          categoryId &&
+          !(await db
+            .prepare("SELECT id FROM categories WHERE id=?")
+            .bind(categoryId)
+            .first())
+        )
+          throw new ApiError(400, "VALIDATION", "Category no longer exists.");
+        const list = ids.map(() => "?").join(",");
+        const now = new Date().toISOString();
+        const sql = {
+          // Stories need text or an attachment before they can be published.
+          publish: `UPDATE works SET status='published',updated_at=? WHERE id IN (${list}) AND NOT (type='story' AND TRIM(body)='' AND attachment_ids='[]')`,
+          unpublish: `UPDATE works SET status='draft',updated_at=? WHERE id IN (${list})`,
+          feature: `UPDATE works SET featured=1,updated_at=? WHERE id IN (${list})`,
+          unfeature: `UPDATE works SET featured=0,updated_at=? WHERE id IN (${list})`,
+          category: `UPDATE works SET category_id=?,updated_at=? WHERE id IN (${list})`,
+          delete: `DELETE FROM works WHERE id IN (${list})`,
+        }[action];
+        const args =
+          action === "delete"
+            ? ids
+            : action === "category"
+              ? [categoryId ?? null, now, ...ids]
+              : [now, ...ids];
+        const result = await db
+          .prepare(sql)
+          .bind(...args)
+          .run();
+        return Response.json({
+          changed: result.meta.changes,
+          skipped: ids.length - result.meta.changes,
+        });
       }
       if (method === "DELETE" && id) {
         await db.prepare("DELETE FROM works WHERE id=?").bind(id).run();
@@ -236,12 +247,7 @@ async function handle(
     }
     if (resource === "categories") {
       if (method === "GET") {
-        const rows = await db
-          .prepare(
-            "SELECT id,name_te AS nameTe,name_en AS nameEn,position FROM categories ORDER BY position,name_en",
-          )
-          .all();
-        return Response.json(rows.results);
+        return Response.json(await listCategories());
       }
       if (method === "DELETE" && id) {
         await db.batch([
@@ -261,22 +267,33 @@ async function handle(
             "Both category names and a valid order are required.",
           );
         const v = parsed.data;
-        const key = id || crypto.randomUUID();
+        if (method === "PUT") {
+          // Editing must not silently create a category under an unknown id.
+          if (
+            !(await db.prepare("SELECT id FROM categories WHERE id=?").bind(id).first())
+          )
+            throw new ApiError(404, "NOT_FOUND", "Category no longer exists.");
+          await db
+            .prepare(
+              "UPDATE categories SET name_te=?,name_en=?,position=? WHERE id=?",
+            )
+            .bind(v.nameTe, v.nameEn, v.position, id)
+            .run();
+          return Response.json({ id });
+        }
+        const key = crypto.randomUUID();
         await db
           .prepare(
-            "INSERT INTO categories (id,name_te,name_en,position) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE name_te=VALUES(name_te),name_en=VALUES(name_en),position=VALUES(position)",
+            "INSERT INTO categories (id,name_te,name_en,position) VALUES (?,?,?,?)",
           )
           .bind(key, v.nameTe, v.nameEn, v.position)
           .run();
-        return Response.json({ id: key });
+        return Response.json({ id: key }, { status: 201 });
       }
     }
     if (resource === "settings") {
       if (method === "GET") {
-        const row = await db
-          .prepare("SELECT `value` FROM settings WHERE id='site'")
-          .first<{ value: string }>();
-        return Response.json(row ? JSON.parse(row.value) : defaultSettings);
+        return Response.json(await getSettings());
       }
       if (method === "PUT") {
         const parsed = settingsSchema.safeParse(await request.json());
@@ -305,6 +322,7 @@ async function handle(
       return Response.json(rows.results);
     }
     if (resource === "uploads" && method === "POST") {
+      if(cloudStorage())throw new ApiError(400,"DIRECT_UPLOAD_REQUIRED","Use the direct upload flow.");
       if (!env.BUCKET)
         throw new ApiError(
           503,
@@ -369,6 +387,7 @@ async function handle(
         .bind(id, id)
         .first();
       if (!published) await requireAdmin();
+      if(cloudStorage())return new Response(null,{status:302,headers:{Location:await downloadUrl(id),"Cache-Control":"private, no-store"}});
       const object = await env.BUCKET?.get(id);
       if (!object) throw new ApiError(404, "NOT_FOUND", "File not found.");
       return new Response(object.body, {
@@ -406,7 +425,7 @@ async function handle(
             "YOUTUBE_ERROR",
             "YouTube rejected the request. Check API access, key restrictions and quota.",
           );
-        return (await response.json()) as any;
+        return (await response.json()) as YouTubeList;
       };
       const channel = await fetchYouTube("channels", {
         part: "contentDetails",
@@ -454,7 +473,7 @@ async function handle(
             s.title,
             s.description || "",
             vid,
-            (item.contentDetails.videoPublishedAt || s.publishedAt || "").slice(
+            (item.contentDetails?.videoPublishedAt || s.publishedAt || "").slice(
               0,
               10,
             ),

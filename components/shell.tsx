@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import {
   createContext,
   useContext,
@@ -7,18 +8,38 @@ import {
   type ReactNode,
 } from "react";
 import { errorInTelugu } from "@/lib/errors";
-const Language = createContext({
+type LanguageState = {
+  lang: string;
+  t: (te: string, en: string) => string;
+  setLang: (lang: string) => void;
+};
+const Language = createContext<LanguageState>({
   lang: "te",
-  t: (te: string, en: string) => te,
-  setLang: (_v: string) => {},
+  t: (te) => te,
+  setLang: () => {},
 });
 export const useLanguage = () => useContext(Language);
-export function Shell({ children }: { children: ReactNode }) {
-  const [lang, setLang] = useState("te");
-  const [menu, setMenu] = useState(false);
+function rememberLanguage(v: string) {
+  // A cookie lets the server render the chosen language on the next visit.
+  document.cookie = `sc-language=${v}; path=/; max-age=31536000; samesite=lax`;
+}
+/** Holds the interface language for both the public site and the admin. */
+export function LanguageProvider({
+  children,
+  initialLang = "te",
+}: {
+  children: ReactNode;
+  initialLang?: "te" | "en";
+}) {
+  const [lang, setLang] = useState<string>(initialLang);
   useEffect(() => {
+    // One-time move of the older localStorage preference into the cookie;
+    // it takes effect from the next page the visitor opens.
     try {
-      setLang(localStorage.getItem("sc-language") === "en" ? "en" : "te");
+      const saved = localStorage.getItem("sc-language");
+      if (saved && !document.cookie.includes("sc-language="))
+        rememberLanguage(saved === "en" ? "en" : "te");
+      localStorage.removeItem("sc-language");
     } catch {}
   }, []);
   useEffect(() => {
@@ -26,13 +47,21 @@ export function Shell({ children }: { children: ReactNode }) {
   }, [lang]);
   const change = (v: string) => {
     setLang(v);
-    try {
-      localStorage.setItem("sc-language", v);
-    } catch {}
+    rememberLanguage(v);
   };
   const t = (te: string, en: string) => (lang === "te" ? te : en);
   return (
     <Language.Provider value={{ lang, t, setLang: change }}>
+      {children}
+    </Language.Provider>
+  );
+}
+/** Public site header and footer. */
+export function Shell({ children }: { children: ReactNode }) {
+  const { lang, t, setLang: change } = useLanguage();
+  const [menu, setMenu] = useState(false);
+  return (
+    <>
       <a className="skip" href="#main">
         {t("విషయానికి వెళ్ళండి", "Skip to content")}
       </a>
@@ -44,7 +73,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <span>EST. WITH LOVE · తెలుగు</span>
       </div>
       <header>
-        <a className="identity" href="/" aria-label="Seshachandra Creations">
+        <Link className="identity" href="/" aria-label="Seshachandra Creations">
           <span className="monogram">
             శే<span>✦</span>
           </span>
@@ -56,7 +85,7 @@ export function Shell({ children }: { children: ReactNode }) {
               {t("SESHACHANDRA CREATIONS", "తెలుగు సాహిత్యం · కథలు · వీడియోలు")}
             </small>
           </span>
-        </a>
+        </Link>
         <button
           className="menu-toggle secondary"
           aria-expanded={menu}
@@ -70,7 +99,7 @@ export function Shell({ children }: { children: ReactNode }) {
           className={menu ? "open" : ""}
           aria-label={t("ప్రధాన మెనూ", "Main navigation")}
         >
-          <a href="/">{t("ముఖపుట", "Home")}</a>
+          <Link href="/">{t("ముఖపుట", "Home")}</Link>
           <a href="/library">{t("రచనల సంపుటి", "Library")}</a>
           <a href="/library?type=video">{t("వీడియోలు", "Videos")}</a>
           <a href="/about">{t("పరిచయం", "About")}</a>
@@ -89,9 +118,9 @@ export function Shell({ children }: { children: ReactNode }) {
       <main id="main">{children}</main>
       <footer>
         <div>
-          <a className="footer-brand" href="/">
+          <Link className="footer-brand" href="/">
             Seshachandra Creations<span>శేషచంద్ర క్రియేషన్స్</span>
-          </a>
+          </Link>
           <p>
             {t(
               "తెలుగు కథలు, సాహిత్యం, వీడియోలు — ఒకే చోట.",
@@ -102,14 +131,13 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="footer-links">
           <a href="/library">{t("రచనలు చూడండి", "Explore the library")}</a>
           <a href="/about">{t("పరిచయం & సంప్రదింపు", "About & contact")}</a>
-          <a href="/admin">{t("నిర్వాహక ప్రవేశం", "Admin sign-in")}</a>
         </div>
         <div className="footer-bottom">
           © {new Date().getFullYear()} Seshachandra Creations{" "}
           <span>{t("తెలుగు పట్ల ప్రేమతో", "With a love for Telugu")} ✦</span>
         </div>
       </footer>
-    </Language.Provider>
+    </>
   );
 }
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
