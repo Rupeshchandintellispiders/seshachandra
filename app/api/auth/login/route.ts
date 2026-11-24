@@ -1,11 +1,7 @@
-import { randomBytes } from "node:crypto";
-import { cookies } from "next/headers";
 import { database } from "@/db/mysql";
 import { verifyPassword, hashPassword } from "@/lib/password.mjs";
 import {
-  sessionCookie,
-  sessionHours,
-  tokenHash,
+  startSession,
   clientIp,
   loginLimits,
   safeNext,
@@ -69,20 +65,7 @@ export async function POST(request: Request) {
       .prepare("DELETE FROM login_limits WHERE window_start<?")
       .bind(now - attemptWindowMs)
       .run();
-    const token = randomBytes(32).toString("hex");
-    await database
-      .prepare(
-        "INSERT INTO admin_sessions(token_hash,admin_id,expires_at) VALUES(?,?,?)",
-      )
-      .bind(tokenHash(token), user.id, now + sessionHours * 60 * 60 * 1000)
-      .run();
-    (await cookies()).set(sessionCookie, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-      maxAge: sessionHours * 60 * 60,
-    });
+    await startSession(user.id);
     return Response.json({ ok: true, next: safeNext(input.next) });
   } catch (e) {
     return errorResponse(e);

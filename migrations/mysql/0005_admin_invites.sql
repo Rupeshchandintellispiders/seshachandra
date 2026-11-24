@@ -1,0 +1,1 @@
+CREATE TABLE admin_invites(id VARCHAR(36) PRIMARY KEY,token_hash CHAR(64) NOT NULL UNIQUE,email VARCHAR(254) NOT NULL,invited_by VARCHAR(36) NOT NULL,created_at BIGINT NOT NULL,expires_at BIGINT NOT NULL,FOREIGN KEY(invited_by) REFERENCES admins(id) ON DELETE CASCADE,INDEX admin_invites_expiry(expires_at));

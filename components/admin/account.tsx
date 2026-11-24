@@ -3,18 +3,25 @@ import { useRef, useState } from "react";
 import { api, useLanguage } from "../shell";
 import { Flash, PageHeader, useAction } from "./common";
 import { RecoveryCodes } from "./recovery-codes";
+import { ChangeEmail } from "./change-email";
+import { Invites, type PendingInvite } from "./invites";
 
 export function Account({
   email,
   sessions,
   codesLeft,
   emailAvailable,
+  invites,
+  welcome = false,
 }: {
   email: string;
   /** Active sign-ins for this admin, including this browser. */
   sessions: number;
   codesLeft: number;
   emailAvailable: boolean;
+  invites: PendingInvite[];
+  /** Just signed up through an invite. */
+  welcome?: boolean;
 }) {
   const { t } = useLanguage();
   const { busy, error, notice, run, setError } = useAction();
@@ -23,7 +30,19 @@ export function Account({
   return (
     <>
       <PageHeader eyebrow={t("ఖాతా", "ACCOUNT")} title={t("మీ ఖాతా", "Your account")} />
+      {welcome && (
+        <div className="notice success" role="status">
+          {t(
+            "స్వాగతం! మీ నిర్వాహక ఖాతా సిద్ధంగా ఉంది. పాస్‌వర్డ్ మర్చిపోతే వాడేందుకు క్రింద రికవరీ కోడ్‌లు సృష్టించుకోండి.",
+            "Welcome! Your admin account is ready. Create recovery codes below in case you ever forget your password.",
+          )}
+        </div>
+      )}
       <Flash error={error} notice={notice} />
+      <div className="adm-grid adm-account-top">
+        <ChangeEmail email={email} />
+        <Invites pending={invites} />
+      </div>
       <div className="adm-grid">
         <form
           ref={form}

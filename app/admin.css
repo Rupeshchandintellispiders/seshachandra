@@ -638,3 +638,32 @@
   font-size: 12px;
   margin-top: 10px;
 }
+
+/* Account: change email and invites */
+.adm-account-top {
+  margin-bottom: 20px;
+}
+.adm-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.adm-subhead {
+  font-size: 16px;
+  margin: 20px 0 4px;
+}
+.adm-invite-link {
+  display: block;
+  margin: 10px 0;
+  padding: 10px;
+  background: var(--paper);
+  border: 1px dashed #bba77f;
+  border-radius: 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.adm-small-button {
+  min-height: 34px !important;
+  padding: 4px 12px !important;
+  font-size: 12px !important;
+}

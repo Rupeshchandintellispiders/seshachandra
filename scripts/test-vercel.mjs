@@ -8,7 +8,8 @@ import { mysqlOptions } from "../lib/mysql-options.mjs";
 import { hashPassword } from "../lib/password.mjs";
 const base = "http://127.0.0.1:4175";
 const c = await mysql.createConnection(mysqlOptions());
-const email = "qa-vercel-" + Date.now() + "@example.test";
+let email = "qa-vercel-" + Date.now() + "@example.test";
+const createdEmails = [];
 let password = crypto.randomUUID() + "A!";
 const startedAt = Date.now();
 const adminId = crypto.randomUUID();
@@ -777,6 +778,116 @@ try {
     assert.match(r.headers.get("x-robots-tag") || "", /noindex/);
     passed++;
   }
+  // ---- Change email ----
+  await login();
+  const otherDevice = cookie;
+  await login();
+  const newEmail = "qa-renamed-" + Date.now() + "@example.test";
+  await check(
+    "/api/auth/email",
+    { method: "POST", body: { email: newEmail, current: password }, auth: false },
+    401,
+  );
+  await check(
+    "/api/auth/email",
+    { method: "POST", body: { email: newEmail, current: "wrong-password" } },
+    400,
+  );
+  await check(
+    "/api/auth/email",
+    { method: "POST", body: { email: "not-an-email", current: password } },
+    400,
+  );
+  await check(
+    "/api/auth/email",
+    { method: "POST", body: { email: newEmail, current: password }, origin: "https://evil.test" },
+    403,
+  );
+  const changed = await (
+    await check(
+      "/api/auth/email",
+      { method: "POST", body: { email: " " + newEmail.toUpperCase() + " ", current: password } },
+      200,
+    )
+  ).json();
+  assert.equal(changed.email, newEmail);
+  passed++;
+  // Other devices are signed out; this one stays in. The old email no longer works.
+  await check("/api/works?admin=1", { headers: { cookie: otherDevice } }, 401);
+  await check("/api/works?admin=1", {}, 200);
+  await check("/api/auth/login", { method: "POST", body: { email, password }, auth: false }, 401);
+  email = newEmail;
+  await login();
+
+  // ---- Invites and sign-up ----
+  const invitee = "qa-invitee-" + Date.now() + "@example.test";
+  createdEmails.push(invitee);
+  await check("/api/auth/invites", { method: "POST", body: { email: invitee }, auth: false }, 401);
+  await check(
+    "/api/auth/invites",
+    { method: "POST", body: { email: invitee }, origin: "https://evil.test" },
+    403,
+  );
+  // An existing admin's email cannot be invited.
+  await check("/api/auth/invites", { method: "POST", body: { email } }, 409);
+  const first = await (await check("/api/auth/invites", { method: "POST", body: { email: invitee } }, 201)).json();
+  const firstInviteToken = new URL(first.link).searchParams.get("token");
+  assert.match(firstInviteToken, /^[a-f0-9]{64}$/);
+  const [storedInvite] = await c.execute("SELECT token_hash FROM admin_invites WHERE id=?", [first.id]);
+  assert.notEqual(storedInvite[0].token_hash, firstInviteToken);
+  passed += 2;
+  // Inviting again replaces the earlier link.
+  const second = await (await check("/api/auth/invites", { method: "POST", body: { email: invitee } }, 201)).json();
+  const inviteToken = new URL(second.link).searchParams.get("token");
+  const oldPage = await (await check("/admin/signup?token=" + firstInviteToken, { auth: false }, 200)).text();
+  assert.doesNotMatch(oldPage, new RegExp(invitee.replace(/[.]/g, "\\.")));
+  const signupPage = await (await check("/admin/signup?token=" + inviteToken, { auth: false }, 200)).text();
+  assert.match(signupPage, new RegExp(invitee.replace(/[.]/g, "\\.")));
+  passed += 2;
+  const accountPage = await (await check("/admin/account", {}, 200)).text();
+  assert.match(accountPage, new RegExp(invitee.replace(/[.]/g, "\\.")));
+  passed++;
+  // No sign-up without a valid invite, and none from another site.
+  await check("/api/auth/signup", { method: "POST", body: { token: firstInviteToken, password: "a-perfectly-fine-password" }, auth: false }, 400);
+  await check("/api/auth/signup", { method: "POST", body: { token: "0".repeat(64), password: "a-perfectly-fine-password" }, auth: false }, 400);
+  await check("/api/auth/signup", { method: "POST", body: { token: inviteToken, password: "short" }, auth: false }, 400);
+  await check(
+    "/api/auth/signup",
+    { method: "POST", body: { token: inviteToken, password: "a-perfectly-fine-password" }, auth: false, origin: "https://evil.test" },
+    403,
+  );
+  const inviteePassword = crypto.randomUUID() + "I!";
+  const joined = await check(
+    "/api/auth/signup",
+    { method: "POST", body: { token: inviteToken, password: inviteePassword }, auth: false },
+    201,
+  );
+  assert.equal((await joined.json()).email, invitee);
+  const inviteeCookie = joined.headers.getSetCookie().map((s) => s.split(";")[0]).join("; ");
+  assert.match(joined.headers.get("set-cookie"), /HttpOnly/i);
+  passed += 2;
+  // The new admin is signed in, can sign in again, and the link works only once.
+  await check("/api/works?admin=1", { headers: { cookie: inviteeCookie } }, 200);
+  await check("/admin/account?welcome=1", { headers: { cookie: inviteeCookie } }, 200);
+  await check("/api/auth/login", { method: "POST", body: { email: invitee, password: inviteePassword }, auth: false }, 200);
+  await check("/api/auth/signup", { method: "POST", body: { token: inviteToken, password: "another-long-password" }, auth: false }, 400);
+  // Cancelling an invite makes its link stop working.
+  const cancelEmail = "qa-cancel-" + Date.now() + "@example.test";
+  const toCancel = await (await check("/api/auth/invites", { method: "POST", body: { email: cancelEmail } }, 201)).json();
+  await check("/api/auth/invites/" + toCancel.id, { method: "DELETE", auth: false }, 401);
+  await check("/api/auth/invites/" + toCancel.id, { method: "DELETE" }, 200);
+  await check("/api/auth/invites/" + toCancel.id, { method: "DELETE" }, 404);
+  await check(
+    "/api/auth/signup",
+    { method: "POST", body: { token: new URL(toCancel.link).searchParams.get("token"), password: "a-perfectly-fine-password" }, auth: false },
+    400,
+  );
+  const [ghostAdmin] = await c.execute("SELECT id FROM admins WHERE email=?", [cancelEmail]);
+  assert.equal(ghostAdmin.length, 0);
+  passed++;
+  const signedOutSignup = await check("/admin/signup", { auth: false }, 200);
+  assert.match(signedOutSignup.headers.get("x-robots-tag") || "", /noindex/);
+  passed++;
   await login();
   await c.execute("UPDATE admin_sessions SET expires_at=0 WHERE admin_id=?", [
     adminId,
@@ -803,6 +914,8 @@ try {
     await c.execute("DELETE FROM uploads WHERE id=?", [id]);
   await c.execute("DELETE FROM upload_intents WHERE admin_id=?", [adminId]);
   await c.execute("DELETE FROM admins WHERE id=?", [adminId]);
+  for (const e of createdEmails)
+    await c.execute("DELETE FROM admins WHERE email=?", [e]);
   // Attempt counters are keyed by hashes; remove the ones this run created.
   await c.execute("DELETE FROM login_limits WHERE window_start>=?", [startedAt]);
   await c.end();

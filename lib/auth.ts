@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 import type { RowDataPacket } from "mysql2";
 import { database, getPool } from "@/db/mysql";
 import { hashPassword } from "./password.mjs";
@@ -34,6 +34,7 @@ export const publicAdminPaths = [
   "/admin/forgot",
   "/admin/reset",
   "/admin/recover",
+  "/admin/signup",
 ];
 /** Only same-site admin paths are allowed as a post-login destination. */
 export function safeNext(value: unknown) {
@@ -63,7 +64,7 @@ type Limit = { key: string; max: number };
  * the wider limits stop broad guessing. Each form has its own counters.
  */
 export function attemptLimits(
-  kind: "login" | "forgot" | "recover",
+  kind: "login" | "forgot" | "recover" | "signup",
   email: string,
   ip: string,
 ): Limit[] {
@@ -171,4 +172,59 @@ export async function recoveryCodesLeft(adminId: string) {
     .bind(adminId)
     .first<{ n: number }>();
   return Number(row?.n || 0);
+}
+
+/** Signs this browser in as the admin: a random token in an HttpOnly cookie, only its hash stored. */
+export async function startSession(adminId: string) {
+  const token = randomBytes(32).toString("hex");
+  await database
+    .prepare(
+      "INSERT INTO admin_sessions(token_hash,admin_id,expires_at) VALUES(?,?,?)",
+    )
+    .bind(tokenHash(token), adminId, Date.now() + sessionHours * 60 * 60 * 1000)
+    .run();
+  (await cookies()).set(sessionCookie, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: sessionHours * 60 * 60,
+  });
+}
+
+/** Simple, permissive check; the address is confirmed by the person using it. */
+export function validEmail(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 254 &&
+    /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value.trim())
+  );
+}
+export const normalEmail = (value: string) => value.trim().toLowerCase();
+
+export const inviteHours = 48;
+export const maxPendingInvites = 10;
+/** An invite still waiting to be used, looked up by its link token. */
+export async function findInvite(token: string) {
+  if (!/^[a-f0-9]{64}$/.test(token)) return null;
+  return database
+    .prepare(
+      "SELECT id,email FROM admin_invites WHERE token_hash=? AND expires_at>?",
+    )
+    .bind(tokenHash(token), Date.now())
+    .first<{ id: string; email: string }>();
+}
+/** Invites not yet used or expired, newest first. */
+export async function pendingInvites() {
+  const rows = await database
+    .prepare(
+      "SELECT id,email,expires_at FROM admin_invites WHERE expires_at>? ORDER BY created_at DESC",
+    )
+    .bind(Date.now())
+    .all<{ id: string; email: string; expires_at: number }>();
+  return rows.results.map((r) => ({
+    id: r.id,
+    email: r.email,
+    expiresAt: Number(r.expires_at),
+  }));
 }
