@@ -1,0 +1,2 @@
+CREATE TABLE password_resets(token_hash CHAR(64) PRIMARY KEY,admin_id VARCHAR(36) NOT NULL,expires_at BIGINT NOT NULL,FOREIGN KEY(admin_id) REFERENCES admins(id) ON DELETE CASCADE,INDEX password_resets_expiry(expires_at));
+CREATE TABLE recovery_codes(code_hash CHAR(64) PRIMARY KEY,admin_id VARCHAR(36) NOT NULL,created_at BIGINT NOT NULL,FOREIGN KEY(admin_id) REFERENCES admins(id) ON DELETE CASCADE,INDEX recovery_codes_admin(admin_id));

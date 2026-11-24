@@ -93,6 +93,18 @@ export const workSchema = z
         message: "A published story needs text or an attachment",
       });
   });
+export const bulkSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(100),
+  action: z.enum([
+    "publish",
+    "unpublish",
+    "feature",
+    "unfeature",
+    "category",
+    "delete",
+  ]),
+  categoryId: z.string().uuid().nullable().optional(),
+});
 export const categorySchema = z.object({
   nameTe: z.string().trim().min(1).max(100),
   nameEn: z.string().trim().min(1).max(100),
@@ -117,6 +129,26 @@ export const defaultSettings = {
   facebookUrl: "",
 };
 export type WorkInput = z.infer<typeof workSchema>;
+/** Starting values for a new work (shared by server pages and the editor). */
+export const emptyWork: WorkInput = {
+  title: "",
+  slug: "",
+  type: "story",
+  description: "",
+  body: "",
+  tags: [],
+  categoryId: null,
+  status: "draft",
+  featured: false,
+  youtubeId: "",
+  publication: "",
+  publicationDate: "",
+  attribution: "",
+  externalUrl: "",
+  coverId: null,
+  attachmentIds: [],
+};
+
 export type Work = WorkInput & {
   id: string;
   createdAt: string;

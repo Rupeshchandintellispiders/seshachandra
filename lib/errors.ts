@@ -1,5 +1,7 @@
 export function errorInTelugu(code: string): string {
   const messages: Record<string, string> = {
+    INVALID_CREDENTIALS: "ఈమెయిల్ లేదా పాస్‌వర్డ్ సరైనది కాదు.",
+    RATE_LIMITED: "చాలా ప్రయత్నాలు జరిగాయి. 15 నిమిషాల తర్వాత ప్రయత్నించండి.",
     UNAUTHORIZED: "నిర్వాహక అనుమతితో ప్రవేశించండి.",
     ORIGIN_REJECTED: "ఈ అభ్యర్థన అనుమతించబడలేదు. పేజీని మళ్ళీ తెరవండి.",
     DATABASE_UNAVAILABLE:
@@ -19,6 +21,14 @@ export function errorInTelugu(code: string): string {
     YOUTUBE_ERROR:
       "YouTube అభ్యర్థనను అంగీకరించలేదు. API కీ, అనుమతులు, కోటాను తనిఖీ చేయండి.",
     CHANNEL_NOT_FOUND: "YouTube ఛానల్ కనుగొనబడలేదు.",
+    WRONG_PASSWORD: "ప్రస్తుత పాస్‌వర్డ్ సరైనది కాదు.",
+    INVALID_RESET:
+      "ఈ రీసెట్ లింక్ చెల్లదు లేదా గడువు ముగిసింది. కొత్త లింక్ కోసం మళ్ళీ అడగండి.",
+    INVALID_CODE: "ఈమెయిల్ లేదా రికవరీ కోడ్ సరైనది కాదు.",
+    MAIL_FAILED:
+      "ఈమెయిల్ పంపలేకపోయాం. కొద్దిసేపటి తర్వాత ప్రయత్నించండి లేదా రికవరీ కోడ్ వాడండి.",
+    WEAK_PASSWORD:
+      "కొత్త పాస్‌వర్డ్ 12 నుండి 128 అక్షరాలు ఉండాలి, ప్రస్తుత పాస్‌వర్డ్‌కు భిన్నంగా ఉండాలి.",
   };
   return (
     messages[code] ||

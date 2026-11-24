@@ -1,8 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useLanguage, api, Empty, Notice } from "./shell";
+import { useState, useSyncExternalStore } from "react";
+import { useLanguage, Empty } from "./shell";
 import {
-  defaultSettings,
   type Work,
   type Category,
   type Settings,
@@ -51,27 +50,16 @@ export function Card({ work }: { work: Work }) {
     </a>
   );
 }
-export function Home() {
+export function Home({
+  latest,
+  featured,
+  cats,
+}: {
+  latest: Work[];
+  featured: Work[];
+  cats: Category[];
+}) {
   const { t, lang } = useLanguage();
-  const [latest, setLatest] = useState<Work[]>([]),
-    [featured, setFeatured] = useState<Work[]>([]),
-    [cats, setCats] = useState<Category[]>([]),
-    [error, setError] = useState(""),
-    [loading, setLoading] = useState(true);
-  useEffect(() => {
-    Promise.all([
-      api<Results>("works"),
-      api<Results>("works?featured=1"),
-      api<Category[]>("categories"),
-    ])
-      .then(([l, f, c]) => {
-        setLatest(l.items);
-        setFeatured(f.items);
-        setCats(c);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
   return (
     <>
       <section className="hero">
@@ -181,11 +169,7 @@ export function Home() {
             {t("అన్నీ చూడండి", "View all works")} →
           </a>
         </div>
-        {error ? (
-          <Notice error={error} />
-        ) : loading ? (
-          <p role="status">{t("లోడ్ అవుతోంది…", "Loading…")}</p>
-        ) : featured.length || latest.length ? (
+        {featured.length || latest.length ? (
           <div className="cards">
             {(featured.length ? featured : latest).slice(0, 6).map((w) => (
               <Card key={w.id} work={w} />
@@ -248,21 +232,17 @@ export function Home() {
     </>
   );
 }
-export function Library() {
+export function Library({
+  result,
+  cats,
+  query,
+}: {
+  result: Results;
+  cats: Category[];
+  /** The current filters, as a URL query string without the leading "?". */
+  query: string;
+}) {
   const { t, lang } = useLanguage();
-  const [query, setQuery] = useState(""),
-    [result, setResult] = useState<Results | null>(null),
-    [cats, setCats] = useState<Category[]>([]),
-    [error, setError] = useState("");
-  useEffect(() => {
-    setQuery(location.search);
-    api<Results>("works" + location.search)
-      .then(setResult)
-      .catch((e) => setError(e.message));
-    api<Category[]>("categories")
-      .then(setCats)
-      .catch((e) => setError(e.message));
-  }, []);
   const p = new URLSearchParams(query);
   return (
     <div className="page-wrap">
@@ -320,11 +300,6 @@ export function Library() {
         </label>
         <button>{t("చూపించు", "Apply")} →</button>
       </form>
-      {error ? (
-        <Notice error={error} />
-      ) : !result ? (
-        <p role="status">{t("లోడ్ అవుతోంది…", "Loading…")}</p>
-      ) : (
         <>
           <p className="result-count">
             {result.total} {t("రచనలు", "works")}
@@ -375,9 +350,32 @@ export function Library() {
             )}
           </div>
         </>
-      )}
     </div>
   );
+}
+/**
+ * Reader text size, remembered in this browser. The server always renders the
+ * default; the saved size applies once the page is running.
+ */
+const defaultFontSize = 22;
+const fontListeners = new Set<() => void>();
+function readFontSize() {
+  try {
+    const n = Number(localStorage.getItem("sc-font"));
+    return n >= 18 && n <= 36 ? n : defaultFontSize;
+  } catch {
+    return defaultFontSize;
+  }
+}
+function saveFontSize(n: number) {
+  try {
+    localStorage.setItem("sc-font", String(n));
+  } catch {}
+  fontListeners.forEach((notify) => notify());
+}
+function subscribeFontSize(notify: () => void) {
+  fontListeners.add(notify);
+  return () => fontListeners.delete(notify);
 }
 export function Reader({
   initial,
@@ -387,21 +385,14 @@ export function Reader({
   preview?: boolean;
 }) {
   const { t } = useLanguage();
-  const [size, setSize] = useState(22),
-    [copied, setCopied] = useState(false),
+  const size = useSyncExternalStore(
+    subscribeFontSize,
+    readFontSize,
+    () => defaultFontSize,
+  );
+  const [copied, setCopied] = useState(false),
     [shareError, setShareError] = useState(false);
-  useEffect(() => {
-    try {
-      const n = Number(localStorage.getItem("sc-font"));
-      if (n >= 18 && n <= 36) setSize(n);
-    } catch {}
-  }, []);
-  function change(n: number) {
-    setSize(n);
-    try {
-      localStorage.setItem("sc-font", String(n));
-    } catch {}
-  }
+  const change = saveFontSize;
   const w = initial;
   return (
     <article className="reader">
@@ -572,15 +563,8 @@ export function Reader({
     </article>
   );
 }
-export function About() {
+export function About({ settings }: { settings: Settings }) {
   const { t, lang } = useLanguage();
-  const [settings, setSettings] = useState<Settings | null>(null),
-    [error, setError] = useState("");
-  useEffect(() => {
-    api<Settings>("settings")
-      .then(setSettings)
-      .catch((e) => setError(e.message));
-  }, []);
   return (
     <div className="page-wrap about">
       <div className="page-heading">
@@ -599,11 +583,6 @@ export function About() {
               "A home for Telugu stories, writing and videos.",
             )}
           </p>
-          {error ? (
-            <Notice error={error} />
-          ) : !settings ? (
-            <p role="status">{t("లోడ్ అవుతోంది…", "Loading…")}</p>
-          ) : (
             <>
               {(lang === "te" ? settings.aboutTe : settings.aboutEn) ? (
                 <div className="preserve-lines">
@@ -641,7 +620,6 @@ export function About() {
                 )}
               </div>
             </>
-          )}
         </div>
       </div>
     </div>
