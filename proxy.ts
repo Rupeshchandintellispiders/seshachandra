@@ -32,6 +32,7 @@ const publicAdminPaths = [
   "/admin/forgot",
   "/admin/reset",
   "/admin/recover",
+  "/admin/signup",
 ];
 
 function hasSessionCookie(request: NextRequest) {

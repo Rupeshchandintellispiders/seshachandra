@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Eye, EyeOff, KeyRound, Lock, Mail } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Lock, Mail, UserPlus } from "lucide-react";
 import { useLanguage, api } from "./shell";
 
 /** Centered card shared by sign-in and the password-recovery pages. */
@@ -445,6 +445,93 @@ export function RecoverAccount() {
           {busy ? t("మారుస్తోంది…", "Saving…") : t("పాస్‌వర్డ్ మార్చు", "Set new password")}
         </button>
       </form>
+      <BackToSignIn />
+    </AuthCard>
+  );
+}
+
+/** Admin sign-up, reachable only through a one-time invite link. */
+export function SignUp({
+  token,
+  email,
+}: {
+  token: string;
+  /** The invited address, or null when the link is invalid or used. */
+  email: string | null;
+}) {
+  const { t } = useLanguage();
+  const { busy, error, setError, submit } = useSubmit();
+  // Keep the one-time token out of the address bar and browser history.
+  useEffect(() => {
+    if (location.search.includes("token=")) history.replaceState(null, "", "/admin/signup");
+  }, []);
+  return (
+    <AuthCard
+      icon={<UserPlus size={22} aria-hidden="true" />}
+      title={t("నిర్వాహకుడిగా చేరండి", "Join as an admin")}
+      intro={
+        email
+          ? t(
+              "మిమ్మల్ని సైట్ నిర్వహణకు ఆహ్వానించారు. మీ పాస్‌వర్డ్ ఎంచుకోండి.",
+              "You've been invited to manage this site. Choose your password.",
+            )
+          : undefined
+      }
+    >
+      {!email ? (
+        <>
+          <div className="notice error" role="alert">
+            {t(
+              "ఈ ఆహ్వాన లింక్ చెల్లదు, వాడేశారు లేదా గడువు ముగిసింది. సైట్ నిర్వాహకుడిని కొత్త లింక్ అడగండి.",
+              "This invite link is invalid, already used or expired. Ask the site admin for a new one.",
+            )}
+          </div>
+          <p className="muted">
+            {t(
+              "ఈ సైట్‌లో ఆహ్వానం లేకుండా ఖాతా సృష్టించలేరు.",
+              "Accounts on this site can only be created by invitation.",
+            )}
+          </p>
+        </>
+      ) : (
+        <>
+          <ErrorNotice error={error} />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const data = new FormData(e.currentTarget);
+              if (data.get("password") !== data.get("confirm")) {
+                setError(t("పాస్‌వర్డ్‌లు సరిపోలలేదు.", "The passwords do not match."));
+                return;
+              }
+              void submit(async () => {
+                await api("auth/signup", {
+                  method: "POST",
+                  body: JSON.stringify({ token, password: data.get("password") }),
+                });
+                location.assign("/admin/account?welcome=1");
+              });
+            }}
+          >
+            <label>
+              {t("ఈమెయిల్", "Email")}
+              <input
+                name="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                readOnly
+              />
+            </label>
+            <NewPasswordFields />
+            <button className="adm-login-submit" disabled={busy}>
+              {busy
+                ? t("ఖాతా సృష్టిస్తోంది…", "Creating account…")
+                : t("ఖాతా సృష్టించు", "Create account")}
+            </button>
+          </form>
+        </>
+      )}
       <BackToSignIn />
     </AuthCard>
   );
