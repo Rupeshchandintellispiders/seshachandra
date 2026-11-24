@@ -465,7 +465,9 @@ async function handle(
         const now = new Date().toISOString();
         const result = await db
           .prepare(
-            "INSERT IGNORE INTO works (id,slug,type,title,description,youtube_id,status,publication_date,created_at,updated_at) VALUES (?,?,'video',?,?,?,'draft',?,?,?)",
+            // Every text column is given a value: TiDB (and strict MySQL)
+            // cannot rely on defaults for TEXT columns.
+            "INSERT IGNORE INTO works (id,slug,type,title,description,body,tags,youtube_id,status,publication,publication_date,attribution,external_url,attachment_ids,created_at,updated_at) VALUES (?,?,'video',?,?,'','[]',?,'draft','',?,'','','[]',?,?)",
           )
           .bind(
             crypto.randomUUID(),

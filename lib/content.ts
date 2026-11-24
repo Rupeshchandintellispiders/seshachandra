@@ -52,7 +52,9 @@ export async function listWorks(query: WorkQuery = {}): Promise<WorkResults> {
     args.push(q, q, q);
   }
   const clause = where.length ? "WHERE " + where.join(" AND ") : "";
-  const page = Math.max(1, Math.min(100000, Number(query.page) || 1));
+  const page = Math.floor(
+    Math.max(1, Math.min(100000, Number(query.page) || 1)),
+  );
   const size = query.admin ? adminPageSize : pageSize;
   const sort =
     query.sort === "oldest"
@@ -62,6 +64,9 @@ export async function listWorks(query: WorkQuery = {}): Promise<WorkResults> {
         : query.sort === "updated"
           ? "updated_at DESC"
           : "created_at DESC";
+  // LIMIT/OFFSET are written into the SQL rather than bound: TiDB rejects
+  // the driver's numeric placeholders there. Both are integers computed here.
+  const limit = `LIMIT ${size} OFFSET ${(page - 1) * size}`;
   const db = bindings();
   const [count, rows] = await Promise.all([
     db
@@ -70,9 +75,9 @@ export async function listWorks(query: WorkQuery = {}): Promise<WorkResults> {
       .first<{ total: number }>(),
     db
       .prepare(
-        `SELECT * FROM works ${clause} ORDER BY ${sort}, id LIMIT ? OFFSET ?`,
+        `SELECT * FROM works ${clause} ORDER BY ${sort}, id ${limit}`,
       )
-      .bind(...args, size, (page - 1) * size)
+      .bind(...args)
       .all<Record<string, unknown>>(),
   ]);
   const total = Number(count?.total || 0);
