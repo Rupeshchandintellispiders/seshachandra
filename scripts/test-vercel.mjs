@@ -839,6 +839,18 @@ try {
   // Inviting again replaces the earlier link.
   const second = await (await check("/api/auth/invites", { method: "POST", body: { email: invitee } }, 201)).json();
   const inviteToken = new URL(second.link).searchParams.get("token");
+  // With email set up, the invite link is also emailed to the invitee.
+  assert.equal(second.emailed, true);
+  assert.equal(second.mailConfigured, true);
+  for (let i = 0; i < 50 && !mails.some((m) => m.to.includes(invitee)); i++)
+    await new Promise((r) => setTimeout(r, 100));
+  const inviteMail = mails.filter((m) => m.to.includes(invitee)).pop();
+  assert.ok(inviteMail, "invite email was not delivered");
+  const mailedToken = decodeQuotedPrintable(inviteMail.data).match(
+    /\/admin\/signup\?token=([a-f0-9]{64})/,
+  )?.[1];
+  assert.equal(mailedToken, inviteToken);
+  passed += 3;
   const oldPage = await (await check("/admin/signup?token=" + firstInviteToken, { auth: false }, 200)).text();
   assert.doesNotMatch(oldPage, new RegExp(invitee.replace(/[.]/g, "\\.")));
   const signupPage = await (await check("/admin/signup?token=" + inviteToken, { auth: false }, 200)).text();

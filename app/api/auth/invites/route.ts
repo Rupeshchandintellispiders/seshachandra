@@ -8,11 +8,13 @@ import {
   validEmail,
 } from "@/lib/auth";
 import { ApiError, errorResponse, requireAdmin } from "@/lib/server";
+import { mailConfigured, sendMail } from "@/lib/mail";
 export const runtime = "nodejs";
 /**
  * Creates a one-time admin sign-up link for one email address. The link is
- * returned once and only its hash is stored; inviting the same email again
- * replaces the earlier link.
+ * emailed to the invitee when SMTP is set up, and always returned once so the
+ * inviter can share it another way. Only its hash is stored; inviting the same
+ * email again replaces the earlier link.
  */
 export async function POST(request: Request) {
   try {
@@ -60,12 +62,47 @@ export async function POST(request: Request) {
     const origin = process.env.SITE_URL
       ? new URL(process.env.SITE_URL).origin
       : new URL(request.url).origin;
+    const link = origin + "/admin/signup?token=" + token;
+    // A failed email does not undo the invite: the link is still shown.
+    let emailed = false;
+    if (mailConfigured()) {
+      try {
+        await sendMail({
+          to: email,
+          subject:
+            "Seshachandra Creations: you're invited to manage the site / నిర్వహణకు ఆహ్వానం",
+          text: [
+            "శేషచంద్ర క్రియేషన్స్ వెబ్‌సైట్ నిర్వహణకు మిమ్మల్ని ఆహ్వానించారు.",
+            "You've been invited to help manage the Seshachandra Creations website.",
+            "",
+            "ఈ లింక్ తెరిచి మీ పాస్‌వర్డ్ ఎంచుకోండి:",
+            "Open this link and choose your password:",
+            "",
+            link,
+            "",
+            `ఈ లింక్ ${inviteHours} గంటల్లో ముగుస్తుంది, ఒకసారి మాత్రమే పనిచేస్తుంది.`,
+            `The link expires in ${inviteHours} hours and works once.`,
+            "",
+            "మీకు ఈ ఆహ్వానం గురించి తెలియకపోతే, ఈ ఈమెయిల్‌ను పట్టించుకోకండి.",
+            "If you weren't expecting this, you can ignore this email.",
+          ].join(String.fromCharCode(10)),
+        });
+        emailed = true;
+      } catch (e) {
+        console.error(
+          "Invite email failed:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
     return Response.json(
       {
         id,
         email,
         expiresAt,
-        link: origin + "/admin/signup?token=" + token,
+        link,
+        emailed,
+        mailConfigured: mailConfigured(),
       },
       { status: 201, headers: { "Cache-Control": "no-store" } },
     );

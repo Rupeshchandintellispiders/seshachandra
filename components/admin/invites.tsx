@@ -16,7 +16,12 @@ export function Invites({ pending }: { pending: PendingInvite[] }) {
   const router = useRouter();
   const { busy, error, notice, run, setNotice } = useAction();
   const form = useRef<HTMLFormElement>(null);
-  const [created, setCreated] = useState<{ email: string; link: string } | null>(null);
+  const [created, setCreated] = useState<{
+    email: string;
+    link: string;
+    emailed: boolean;
+    mailConfigured: boolean;
+  } | null>(null);
   const when = (ms: number) =>
     new Date(ms).toLocaleString(lang === "te" ? "te-IN" : "en-IN", {
       dateStyle: "medium",
@@ -35,13 +40,35 @@ export function Invites({ pending }: { pending: PendingInvite[] }) {
       </p>
       <Flash error={error} notice={notice} />
       {created && (
-        <div className="notice" role="status">
-          <strong>
-            {t(
-              `${created.email} కోసం లింక్ — ఇప్పుడే కాపీ చేయండి, మళ్ళీ కనిపించదు:`,
-              `Link for ${created.email}. Copy it now; it won't be shown again:`,
-            )}
-          </strong>
+        <div className={"notice" + (created.emailed ? " success" : "")} role="status">
+          {created.emailed ? (
+            <p>
+              <strong>
+                {t(
+                  `ఆహ్వానం ${created.email} కు ఈమెయిల్ చేయబడింది.`,
+                  `Invite emailed to ${created.email}.`,
+                )}
+              </strong>{" "}
+              {t(
+                "ఈమెయిల్ అందకపోతే (స్పామ్ కూడా చూడమనండి), ఈ లింక్‌ను మీరే పంపవచ్చు:",
+                "If it doesn't arrive (ask them to check spam), you can send this link yourself:",
+              )}
+            </p>
+          ) : (
+            <p>
+              <strong>
+                {created.mailConfigured
+                  ? t(
+                      `${created.email} కు ఈమెయిల్ పంపలేకపోయాం. ఈ లింక్‌ను మీరే పంపండి — ఇప్పుడే కాపీ చేయండి, మళ్ళీ కనిపించదు:`,
+                      `The email to ${created.email} could not be sent. Send this link yourself; copy it now, it won't be shown again:`,
+                    )
+                  : t(
+                      `${created.email} కోసం లింక్ — ఇప్పుడే కాపీ చేయండి, మళ్ళీ కనిపించదు:`,
+                      `Link for ${created.email}. Copy it now; it won't be shown again:`,
+                    )}
+              </strong>
+            </p>
+          )}
           <code className="adm-invite-link">{created.link}</code>
           <div className="editor-actions">
             <button
@@ -69,12 +96,17 @@ export function Invites({ pending }: { pending: PendingInvite[] }) {
           e.preventDefault();
           const email = new FormData(e.currentTarget).get("email");
           void run(async () => {
-            const r = await api<{ email: string; link: string }>("auth/invites", {
+            const r = await api<{
+              email: string;
+              link: string;
+              emailed: boolean;
+              mailConfigured: boolean;
+            }>("auth/invites", {
               method: "POST",
               body: JSON.stringify({ email }),
             });
             form.current?.reset();
-            setCreated({ email: r.email, link: r.link });
+            setCreated(r);
             router.refresh();
           });
         }}
