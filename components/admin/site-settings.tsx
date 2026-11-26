@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { api, useLanguage } from "../shell";
 import { Flash, PageHeader, useAction } from "./common";
+import { LogoCard } from "./logo-card";
 import type { Settings } from "@/lib/validation";
 
 export function SiteSettings({ initial }: { initial: Settings }) {
@@ -20,6 +21,7 @@ export function SiteSettings({ initial }: { initial: Settings }) {
           {t("పరిచయ పేజీ చూడండి", "View About page")} ↗
         </a>
       </PageHeader>
+      <LogoCard />
       <Flash error={error} notice={notice} />
       <form
         className="adm-card"

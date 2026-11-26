@@ -15,6 +15,7 @@ const startedAt = Date.now();
 const adminId = crypto.randomUUID();
 const objects = new Map();
 let child;
+let savedLogo = [];
 let passed = 0;
 const uploaded = [],
   works = [];
@@ -143,6 +144,8 @@ async function login() {
 }
 try {
   const [before] = await c.query("SELECT COUNT(*) total FROM works");
+  [savedLogo] = await c.query("SELECT * FROM site_logo WHERE id='site'");
+  await c.query("DELETE FROM site_logo WHERE id='site'");
   await c.execute("INSERT INTO admins(id,email,password_hash) VALUES(?,?,?)", [
     adminId,
     email,
@@ -778,6 +781,57 @@ try {
     assert.match(r.headers.get("x-robots-tag") || "", /noindex/);
     passed++;
   }
+  // ---- Site logo ----
+  const uploadLogo = (bytes, type, { auth = true, origin = base } = {}) => {
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type }), "logo");
+    return fetch(base + "/api/site/logo", {
+      method: "POST",
+      headers: { origin, ...(auth && cookie ? { cookie } : {}) },
+      body: form,
+      redirect: "manual",
+    });
+  };
+  const expectStatus = async (promise, status, label) => {
+    const r = await promise;
+    assert.equal(r.status, status, label + " " + (r.status !== status ? await r.text() : ""));
+    passed++;
+    return r;
+  };
+  await expectStatus(uploadLogo(png, "image/png", { auth: false }), 401, "logo upload signed out");
+  await expectStatus(uploadLogo(png, "image/png", { origin: "https://evil.test" }), 403, "logo upload cross-site");
+  await expectStatus(uploadLogo(Buffer.from("<svg onload=alert(1)/>"), "image/svg+xml"), 400, "svg logo");
+  await expectStatus(uploadLogo(Buffer.from("<html>not an image</html>"), "image/png"), 400, "fake png logo");
+  await expectStatus(uploadLogo(Buffer.alloc(1024 * 1024 + 10, 1), "image/png"), 400, "oversized logo");
+  const saved = await (await expectStatus(uploadLogo(png, "image/png"), 200, "logo upload")).json();
+  assert.match(saved.url, /^\/site-logo\?v=\d+$/);
+  const logoRes = await check(saved.url, { auth: false }, 200);
+  assert.equal(logoRes.headers.get("content-type"), "image/png");
+  assert.match(logoRes.headers.get("cache-control"), /immutable/);
+  assert.equal(logoRes.headers.get("x-content-type-options"), "nosniff");
+  assert.deepEqual(Buffer.from(await logoRes.arrayBuffer()), png);
+  passed += 4;
+  // The logo replaces the emblem everywhere and becomes the tab icon.
+  const homeWithLogo = await (await check("/", { auth: false }, 200)).text();
+  assert.ok(homeWithLogo.includes('src="' + saved.url.replace("?", "?") + '"'), "logo in public header");
+  assert.match(homeWithLogo, new RegExp('<link rel="icon" href="' + saved.url.replace(/[?]/g, "\\?")));
+  assert.match(homeWithLogo, /property="og:image" content="[^"]*\/site-logo\?v=/);
+  const loginWithLogo = await (await check("/admin/login", { auth: false }, 200)).text();
+  assert.ok(loginWithLogo.includes(saved.url), "logo on sign-in page");
+  const adminWithLogo = await (await check("/admin/settings", {}, 200)).text();
+  assert.ok(adminWithLogo.includes(saved.url), "logo in admin");
+  const aboutWithLogo = await (await check("/about", { auth: false }, 200)).text();
+  assert.match(aboutWithLogo, /about-emblem-logo/);
+  passed += 6;
+  // Removing it brings the emblem back.
+  await check("/api/site/logo", { method: "DELETE", auth: false }, 401);
+  await check("/api/site/logo", { method: "DELETE" }, 200);
+  await check("/site-logo", { auth: false }, 404);
+  const homeNoLogo = await (await check("/", { auth: false }, 200)).text();
+  assert.doesNotMatch(homeNoLogo, /site-logo\?v=/);
+  assert.match(homeNoLogo, /class="monogram/);
+  assert.match(homeNoLogo, /<link rel="icon" href="\/favicon\.svg"/);
+  passed += 3;
   // ---- Change email ----
   await login();
   const otherDevice = cookie;
@@ -930,6 +984,9 @@ try {
     await c.execute("DELETE FROM admins WHERE email=?", [e]);
   // Attempt counters are keyed by hashes; remove the ones this run created.
   await c.execute("DELETE FROM login_limits WHERE window_start>=?", [startedAt]);
+  await c.query("DELETE FROM site_logo WHERE id='site'");
+  for (const row of savedLogo)
+    await c.execute("INSERT INTO site_logo(id,mime,data,updated_at) VALUES(?,?,?,?)", [row.id, row.mime, row.data, row.updated_at]);
   await c.end();
   if (child) {
     child.kill();

@@ -12,11 +12,14 @@ type LanguageState = {
   lang: string;
   t: (te: string, en: string) => string;
   setLang: (lang: string) => void;
+  /** Address of the uploaded site logo, or null to show the text emblem. */
+  logo: string | null;
 };
 const Language = createContext<LanguageState>({
   lang: "te",
   t: (te) => te,
   setLang: () => {},
+  logo: null,
 });
 export const useLanguage = () => useContext(Language);
 function rememberLanguage(v: string) {
@@ -27,9 +30,11 @@ function rememberLanguage(v: string) {
 export function LanguageProvider({
   children,
   initialLang = "te",
+  logo = null,
 }: {
   children: ReactNode;
   initialLang?: "te" | "en";
+  logo?: string | null;
 }) {
   const [lang, setLang] = useState<string>(initialLang);
   useEffect(() => {
@@ -51,9 +56,28 @@ export function LanguageProvider({
   };
   const t = (te: string, en: string) => (lang === "te" ? te : en);
   return (
-    <Language.Provider value={{ lang, t, setLang: change }}>
+    <Language.Provider value={{ lang, t, setLang: change, logo }}>
       {children}
     </Language.Provider>
+  );
+}
+/**
+ * The site logo when one is uploaded, otherwise the "శే" emblem. Used in every
+ * header, the admin sidebar, sign-in pages and the footer.
+ */
+export function SiteLogo({ className = "" }: { className?: string }) {
+  const { logo } = useContext(Language);
+  if (logo)
+    return (
+      <span className={"site-logo " + className}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- small uploaded logo, served from the database */}
+        <img src={logo} alt="" />
+      </span>
+    );
+  return (
+    <span className={"monogram " + className}>
+      శే<span>✦</span>
+    </span>
   );
 }
 /** Public site header and footer. */
@@ -74,9 +98,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </div>
       <header>
         <Link className="identity" href="/" aria-label="Seshachandra Creations">
-          <span className="monogram">
-            శే<span>✦</span>
-          </span>
+          <SiteLogo />
           <span>
             <strong>
               {t("శేషచంద్ర క్రియేషన్స్", "Seshachandra Creations")}
@@ -119,7 +141,10 @@ export function Shell({ children }: { children: ReactNode }) {
       <footer>
         <div>
           <Link className="footer-brand" href="/">
-            Seshachandra Creations<span>శేషచంద్ర క్రియేషన్స్</span>
+            <SiteLogo className="footer-logo" />
+            <span className="footer-brand-text">
+              Seshachandra Creations<span>శేషచంద్ర క్రియేషన్స్</span>
+            </span>
           </Link>
           <p>
             {t(

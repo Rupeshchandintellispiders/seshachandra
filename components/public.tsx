@@ -564,7 +564,7 @@ export function Reader({
   );
 }
 export function About({ settings }: { settings: Settings }) {
-  const { t, lang } = useLanguage();
+  const { t, lang, logo } = useLanguage();
   return (
     <div className="page-wrap about">
       <div className="page-heading">
@@ -572,9 +572,17 @@ export function About({ settings }: { settings: Settings }) {
         <h1>{t("పరిచయం & సంప్రదింపు", "About & contact")}</h1>
       </div>
       <div className="about-grid">
-        <div className="about-emblem" aria-hidden="true">
-          శే<span>శేషచంద్ర క్రియేషన్స్</span>
-        </div>
+        {logo ? (
+          <div className="about-emblem about-emblem-logo" aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element -- small uploaded logo, served from the database */}
+            <img src={logo} alt="" />
+            <span>శేషచంద్ర క్రియేషన్స్</span>
+          </div>
+        ) : (
+          <div className="about-emblem" aria-hidden="true">
+            శే<span>శేషచంద్ర క్రియేషన్స్</span>
+          </div>
+        )}
         <div>
           <h2>Seshachandra Creations</h2>
           <p className="lead">
