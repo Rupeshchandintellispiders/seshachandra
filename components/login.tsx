@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Eye, EyeOff, KeyRound, Lock, Mail, UserPlus } from "lucide-react";
-import { useLanguage, api } from "./shell";
+import { useLanguage, api, SiteLogo } from "./shell";
 
 /** Centered card shared by sign-in and the password-recovery pages. */
 function AuthCard({
@@ -22,9 +22,7 @@ function AuthCard({
       <div className="adm-login-card">
         <div className="adm-login-top">
           <Link className="adm-brand" href="/">
-            <span className="monogram">
-              శే<span>✦</span>
-            </span>
+            <SiteLogo />
             <span>
               <strong>{t("శేషచంద్ర క్రియేషన్స్", "Seshachandra Creations")}</strong>
               <small>{t("నిర్వహణ", "Admin")}</small>

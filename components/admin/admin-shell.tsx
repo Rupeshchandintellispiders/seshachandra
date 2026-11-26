@@ -14,7 +14,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { api, useLanguage } from "../shell";
+import { api, SiteLogo, useLanguage } from "../shell";
 
 const nav = [
   { href: "/admin", te: "డాష్‌బోర్డ్", en: "Dashboard", icon: LayoutDashboard },
@@ -56,9 +56,7 @@ export function AdminShell({
       </a>
       <aside className="adm-sidebar" aria-label={t("నిర్వహణ మెనూ", "Admin menu")}>
         <Link className="adm-brand" href="/admin" onClick={() => setOpen(false)}>
-          <span className="monogram">
-            శే<span>✦</span>
-          </span>
+          <SiteLogo />
           <span>
             <strong>{t("శేషచంద్ర", "Seshachandra")}</strong>
             <small>{t("నిర్వహణ", "Admin")}</small>

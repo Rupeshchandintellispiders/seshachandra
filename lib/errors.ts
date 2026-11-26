@@ -14,6 +14,7 @@ export function errorInTelugu(code: string): string {
     BODY_TOO_LARGE: "అభ్యర్థన పరిమాణం చాలా ఎక్కువగా ఉంది.",
     FILE_TOO_LARGE: "ఒక్కో ఫైలు గరిష్ఠ పరిమాణం 10 MB.",
     INVALID_FILE: "10 MB లోపు సరైన PDF, JPEG, PNG లేదా WebP ఫైలును ఎంచుకోండి.",
+    LOGO_INVALID: "1 MB లోపు PNG, JPEG లేదా WebP చిత్రాన్ని ఎంచుకోండి.",
     STORAGE_UNAVAILABLE:
       "ఫైలు నిల్వ అందుబాటులో లేదు. నిర్వాహకుడు అమరికను తనిఖీ చేయాలి.",
     YOUTUBE_KEY_MISSING:

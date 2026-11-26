@@ -667,3 +667,87 @@
   padding: 4px 12px !important;
   font-size: 12px !important;
 }
+
+/* Uploaded site logo (falls back to the .monogram emblem) */
+.site-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 58px;
+}
+.site-logo img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+}
+.adm-sidebar .site-logo,
+.adm-login-top .site-logo {
+  height: 46px;
+}
+.adm-sidebar .site-logo img {
+  max-width: 120px;
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 3px;
+}
+.footer-brand {
+  display: flex !important;
+  align-items: center;
+  gap: 14px;
+}
+.footer-brand .footer-brand-text {
+  display: block;
+  font-size: inherit;
+  margin: 0;
+  color: inherit;
+}
+.footer-brand .footer-brand-text span {
+  display: block;
+}
+.footer-brand .site-logo.footer-logo {
+  height: 48px;
+  margin: 0;
+}
+/* Without an uploaded logo the footer stays text-only, as before. */
+.footer-brand .monogram.footer-logo {
+  display: none;
+}
+.about-emblem-logo img {
+  max-width: 70%;
+  max-height: 220px;
+  object-fit: contain;
+  margin-bottom: 18px;
+}
+.adm-logo-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  margin-bottom: 14px;
+  background: #fbf6ec;
+  border: 1px dashed #bba77f;
+  border-radius: 6px;
+  padding: 16px;
+}
+.adm-logo-preview img {
+  max-height: 110px;
+  max-width: 100%;
+  object-fit: contain;
+}
+@media (max-width: 700px) {
+  .site-logo {
+    height: 46px;
+  }
+  .site-logo img {
+    max-width: 130px;
+  }
+}
+.adm-logo-card {
+  margin-bottom: 20px;
+}
+.adm-logo-card .editor-actions button {
+  gap: 8px;
+}
